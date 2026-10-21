@@ -5,7 +5,7 @@ import re
 import time
 from collections import defaultdict, deque
 from pathlib import Path
-from threading import Lock
+from threading import BoundedSemaphore, Lock
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
@@ -69,6 +69,13 @@ RATE_LIMIT_WINDOW_SECONDS = int(
 
 IS_PRODUCTION = (
     APP_ENV == "production"
+)
+
+MAX_CONCURRENT_EXECUTIONS = int(
+    os.getenv(
+        "MAX_CONCURRENT_EXECUTIONS",
+        "3",
+    )
 )
 
 
@@ -178,6 +185,10 @@ _rate_limit_store: dict[
 ] = defaultdict(deque)
 
 _rate_limit_lock = Lock()
+
+_execution_slots = BoundedSemaphore(
+    MAX_CONCURRENT_EXECUTIONS
+)
 
 
 def _client_identifier(
@@ -358,38 +369,51 @@ def execute(
         request
     )
 
-    try:
-        result = execute_java(
-            req.code,
-            req.inputArray,
-            req.methodName,
+    acquired = _execution_slots.acquire(
+        blocking=False
+    )
+
+    if not acquired:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Execution service is busy. "
+                "Please try again shortly."
+            ),
         )
 
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail=str(exc),
-        ) from exc
+    try:
+        try:
+            result = execute_java(
+                req.code,
+                req.inputArray,
+                req.methodName,
+            )
 
-    except Exception as exc:
-        # Development mode should expose unexpected errors
-        # so we can debug them locally.
-        if not IS_PRODUCTION:
-            raise
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=str(exc),
+            ) from exc
 
-        # Production mode intentionally hides Python/backend
-        # implementation details from public users.
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                "The execution service encountered "
-                "an internal error."
-            ),
-        ) from exc
+        except Exception as exc:
+            if not IS_PRODUCTION:
+                raise
 
-    return _prepare_public_result(
-        result
-    )
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "The execution service encountered "
+                    "an internal error."
+                ),
+            ) from exc
+
+        return _prepare_public_result(
+            result
+        )
+
+    finally:
+        _execution_slots.release()
 
 
 # ============================================================
@@ -501,6 +525,7 @@ def static_fallback(
             candidate
         )
 
-    return FileResponse(
-        STATIC / "index.html"
+    raise HTTPException(
+        status_code=404,
+        detail="Not found.",
     )

@@ -75,6 +75,54 @@ function parseInputArray() {
     return values;
 }
 
+function formatApiError(detail, status) {
+    if (!detail) {
+        return `HTTP ${status}`;
+    }
+
+    if (typeof detail === 'string') {
+        return detail;
+    }
+
+    if (Array.isArray(detail)) {
+        return detail
+            .map(item => {
+                if (typeof item === 'string') {
+                    return item;
+                }
+
+                if (item && typeof item === 'object') {
+                    const location = Array.isArray(item.loc)
+                        ? item.loc
+                            .filter(part => part !== 'body')
+                            .join(' → ')
+                        : '';
+
+                    const message =
+                        item.msg ||
+                        item.message ||
+                        JSON.stringify(item);
+
+                    return location
+                        ? `${location}: ${message}`
+                        : message;
+                }
+
+                return String(item);
+            })
+            .join('\n');
+    }
+
+    if (typeof detail === 'object') {
+        return (
+            detail.message ||
+            detail.msg ||
+            JSON.stringify(detail)
+        );
+    }
+
+    return String(detail);
+}
 
 async function executeCode() {
     clearError();
@@ -132,7 +180,10 @@ async function executeCode() {
 
         if (!response.ok) {
             throw new Error(
-                result.detail || `HTTP ${response.status}`
+                formatApiError(
+                    result.detail,
+                    response.status
+                )
             );
         }
 
