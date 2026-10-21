@@ -18,9 +18,10 @@ venv/
 .DS_Store
 Thumbs.db
 
-#website
+# Website / secrets
 .env
 .env.*
+!.env.example
 secrets/
 *.key
 *.pem
