@@ -4,3 +4,23 @@
 *.swp
 *.swo
 *~
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Java
+*.class
+
+# OS
+.DS_Store
+Thumbs.db
+
+#website
+.env
+.env.*
+secrets/
+*.key
+*.pem

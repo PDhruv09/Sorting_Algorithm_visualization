@@ -1,2 +1,122 @@
-# Sorting_Algorithm_visualization
+# Java Sorting Visualizer — Full-Stack Runner
 
+This version changes the original GitHub Pages visualizer from a pattern-matching demo into a tool that **compiles and executes the Java code the user actually submits**.
+
+## What changed
+
+The old version guessed the sorting algorithm and then ran a built-in JavaScript implementation. This version sends the submitted Java to a backend runner that:
+
+1. Finds a supported sorting method.
+2. Adds lightweight trace hooks when the source shape can be instrumented safely.
+3. Compiles the Java with `javac`.
+4. Executes the compiled method on the requested input array.
+5. Returns the real final array, stdout, compiler errors, runtime exceptions, timeouts, and trace steps.
+6. Uses those trace steps in the existing visualizer.
+
+The algorithm-selection buttons are now informational only. They never replace the submitted Java implementation.
+
+## Supported method shapes
+
+The runner accepts a full Java class or a pasted method. The target method must currently take exactly one of these parameter types:
+
+```java
+public static void sort(int[] arr) { ... }
+```
+
+or
+
+```java
+public static void sort(ArrayList<Integer> arr) { ... }
+```
+
+The method can have another name such as `insertionSort`, `quickSort`, `selectionSort`, `bubbleSort`, `mergeSort`, `bucketSort`, `countSort`, or `countingSort`. If several supported methods exist, enter the method name in the UI.
+
+Instance methods are supported as long as the containing class has a no-argument constructor.
+
+## Error reporting
+
+The runner distinguishes:
+
+- compilation errors from `javac`
+- runtime exceptions from the student's Java
+- execution timeouts / likely infinite loops
+- server/validation errors
+- successful execution
+
+Compiler messages and Java stack traces are shown in the UI.
+
+## Visualization fidelity
+
+The Java method itself is always what gets compiled and executed. Intermediate visualization is produced by lightweight source instrumentation. It works best with normal course-style Java formatting:
+
+- one statement per line
+- braces around `if`, `for`, and `while` bodies
+- array/list modifications inside the target method
+
+If the source compiles but cannot be instrumented safely, the runner retries the original source. The actual Java still executes and the final output/error remains authoritative; the UI reports that intermediate tracing is unavailable.
+
+`comparisons` and `array accesses` are trace-derived estimates. The **final Java result and Java errors are actual execution results**.
+
+## Local run
+
+Requirements:
+
+- Python 3.11+
+- Java/JDK 21 (or compatible modern JDK)
+
+```bash
+python -m venv .venv
+# Windows: .venv\Scripts\activate
+# macOS/Linux: source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn server:app --reload --port 8000
+```
+
+Open `http://localhost:8000`.
+
+## Docker
+
+```bash
+docker compose up --build
+```
+
+Then open `http://localhost:8000`.
+
+## Important deployment/security note
+
+This repository executes submitted Java code. The included runner applies time, memory, process, file-size, and API restrictions, and `docker-compose.yml` drops Linux capabilities and makes the application filesystem read-only. **This is still not a complete hostile-code sandbox.**
+
+For a public internet deployment, put each execution into a disposable isolated container/microVM with networking disabled and strict CPU/memory/PID/filesystem limits. Do not expose unrestricted host-side `javac/java` execution to untrusted public traffic.
+
+For a DSC 30 staff/internal tool or controlled classroom deployment, this repository is a strong starting point, but the production hosting environment should still isolate execution jobs.
+
+## Project structure
+
+```text
+.
+├── server.py             FastAPI web server
+├── runner.py             Java compile/run/instrumentation layer
+├── requirements.txt
+├── Dockerfile
+├── docker-compose.yml
+└── static/
+    ├── index.html
+    ├── main.js
+    └── style.css
+```
+
+## API
+
+`POST /api/execute`
+
+Example:
+
+```json
+{
+  "code": "public static void sort(int[] arr) { ... }",
+  "inputArray": [5, 1, 4, 2, 8],
+  "methodName": "sort"
+}
+```
+
+Successful responses include the detected class/method, final array, stdout/stderr, and trace steps. Failed responses identify compilation errors, runtime exceptions, or timeouts.

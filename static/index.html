@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Java Sorting Visualizer</title>
+
+    <link
+        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Space+Mono:wght@400;700&display=swap"
+        rel="stylesheet"
+    >
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="grid-bg"></div>
+
+    <div class="container">
+        <header>
+            <h1>Java Sort Visualizer</h1>
+
+            <p class="subtitle">
+                Actual Java Compilation, Execution & Visualization
+            </p>
+        </header>
+
+
+        <div class="layout">
+            <div class="panel code-editor">
+                <h2 class="panel-title">
+                    Java Code Input
+                </h2>
+
+                <textarea
+                    id="javaCode"
+                    placeholder="Paste your Java sorting code here (full class or a single sorting method)..."
+                ></textarea>
+
+                <div class="runner-options">
+                    <div class="runner-option">
+                        <label for="inputArray">
+                            Input array
+                        </label>
+
+                        <input
+                            id="inputArray"
+                            type="text"
+                            value="64, 34, 25, 12, 22, 11, 90, 88, 45, 50"
+                            placeholder="e.g. 5, 1, 4, 2, 8"
+                        >
+                    </div>
+
+                    <div class="runner-option">
+                        <label for="methodName">
+                            Method name
+                            <span class="muted">
+                                (optional)
+                            </span>
+                        </label>
+
+                        <input
+                            id="methodName"
+                            type="text"
+                            placeholder="Auto-detect"
+                        >
+                    </div>
+                </div>
+
+
+                <div class="algorithm-selector">
+                    <label class="algorithm-selector-label">
+                        Select Your Algorithm Type:
+                    </label>
+
+                    <div class="examples">
+                        <button
+                            class="btn-info example-btn"
+                            onclick="selectAlgorithm('bubble')"
+                        >
+                            Bubble Sort
+                        </button>
+
+                        <button
+                            class="btn-info example-btn"
+                            onclick="selectAlgorithm('selection')"
+                        >
+                            Selection Sort
+                        </button>
+
+                        <button
+                            class="btn-info example-btn"
+                            onclick="selectAlgorithm('insertion')"
+                        >
+                            Insertion Sort
+                        </button>
+
+                        <button
+                            class="btn-info example-btn"
+                            onclick="selectAlgorithm('merge')"
+                        >
+                            Merge Sort
+                        </button>
+
+                        <button
+                            class="btn-info example-btn"
+                            onclick="selectAlgorithm('quick')"
+                        >
+                            Quick Sort
+                        </button>
+
+                        <button
+                            class="btn-info example-btn"
+                            onclick="selectAlgorithm('bucket')"
+                        >
+                            Bucket Sort
+                        </button>
+
+                        <button
+                            class="btn-info example-btn"
+                            onclick="selectAlgorithm('counting')"
+                        >
+                            Counting Sort
+                        </button>
+                    </div>
+
+                    <p class="algorithm-mode-note">
+                        Selecting an algorithm changes the visualization
+                        and complexity reference only. The Java code you
+                        enter is still compiled and executed directly.
+                    </p>
+                </div>
+
+
+                <div class="controls">
+                    <button
+                        class="btn-primary"
+                        onclick="executeCode()"
+                    >
+                        ▶ Execute
+                    </button>
+
+                    <button
+                        class="btn-secondary"
+                        onclick="stepForward()"
+                    >
+                        ⏭ Step Forward
+                    </button>
+
+                    <button
+                        class="btn-secondary"
+                        onclick="stepBackward()"
+                    >
+                        ⏮ Step Back
+                    </button>
+
+                    <button
+                        class="btn-info"
+                        onclick="pauseResume()"
+                    >
+                        ⏸ Pause
+                    </button>
+
+                    <button
+                        class="btn-info"
+                        onclick="resetVisualization()"
+                    >
+                        🔄 Reset
+                    </button>
+                </div>
+
+
+                <div class="speed-control">
+                    <label>
+                        Speed:
+                    </label>
+
+                    <input
+                        type="range"
+                        id="speedSlider"
+                        min="50"
+                        max="2000"
+                        value="500"
+                        step="50"
+                    >
+
+                    <span id="speedValue">
+                        500ms
+                    </span>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="layout">
+            <div class="panel">
+                <h2 class="panel-title">
+                    Visualization
+                </h2>
+
+                <div
+                    class="visualization-area"
+                    id="visualizationArea"
+                ></div>
+
+
+                <div class="legend">
+                    <div class="legend-item">
+                        <div
+                            class="legend-color"
+                            style="background: var(--compare);"
+                        ></div>
+
+                        <span>
+                            Comparing
+                        </span>
+                    </div>
+
+                    <div class="legend-item">
+                        <div
+                            class="legend-color"
+                            style="background: var(--write);"
+                        ></div>
+
+                        <span>
+                            Writing / Shifting
+                        </span>
+                    </div>
+
+                    <div class="legend-item">
+                        <div
+                            class="legend-color"
+                            style="background: var(--swap);"
+                        ></div>
+
+                        <span>
+                            Swapping
+                        </span>
+                    </div>
+
+                    <div class="legend-item">
+                        <div
+                            class="legend-color"
+                            style="background: var(--sorted);"
+                        ></div>
+
+                        <span>
+                            Sorted
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+
+            <div class="panel">
+                <h2 class="panel-title">
+                    Code Execution
+                </h2>
+
+                <div
+                    class="code-display"
+                    id="codeDisplay"
+                ></div>
+            </div>
+        </div>
+
+
+        <div class="layout">
+            <div class="panel">
+                <h2 class="panel-title">
+                    Estimated Complexity
+                </h2>
+
+                <div class="complexity-panel">
+                    <div class="complexity-item">
+                        <div class="complexity-label">
+                            Time Complexity
+                        </div>
+
+                        <div
+                            class="complexity-value"
+                            id="timeComplexity"
+                        >
+                            -
+                        </div>
+                    </div>
+
+                    <div class="complexity-item">
+                        <div class="complexity-label">
+                            Space Complexity
+                        </div>
+
+                        <div
+                            class="complexity-value"
+                            id="spaceComplexity"
+                        >
+                            -
+                        </div>
+                    </div>
+                </div>
+
+                <p class="complexity-note">
+                    Complexity values are estimates based on the selected
+                    algorithm or recognizable source-code patterns.
+                    They are not a formal proof of the submitted program.
+                </p>
+            </div>
+
+
+            <div class="panel">
+                <h2 class="panel-title">
+                    Execution Status
+                </h2>
+
+                <div class="status-panel">
+                    <div class="status-item">
+                        <span class="status-label">
+                            Current Action
+                        </span>
+
+                        <span
+                            class="status-value"
+                            id="currentAction"
+                        >
+                            -
+                        </span>
+                    </div>
+
+                    <div class="status-item">
+                        <span class="status-label">
+                            Current Step
+                        </span>
+
+                        <span
+                            class="status-value"
+                            id="currentStep"
+                        >
+                            0
+                        </span>
+                    </div>
+
+                    <div class="status-item">
+                        <span class="status-label">
+                            Total Steps
+                        </span>
+
+                        <span
+                            class="status-value"
+                            id="totalSteps"
+                        >
+                            0
+                        </span>
+                    </div>
+
+                    <div class="status-item">
+                        <span class="status-label">
+                            Comparisons
+                        </span>
+
+                        <span
+                            class="status-value"
+                            id="comparisons"
+                        >
+                            0
+                        </span>
+                    </div>
+
+                    <div class="status-item">
+                        <span class="status-label">
+                            Swaps
+                        </span>
+
+                        <span
+                            class="status-value"
+                            id="swaps"
+                        >
+                            0
+                        </span>
+                    </div>
+
+                    <div class="status-item">
+                        <span class="status-label">
+                            Array Accesses
+                        </span>
+
+                        <span
+                            class="status-value"
+                            id="arrayAccesses"
+                        >
+                            0
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="layout">
+            <div class="panel code-editor">
+                <h2 class="panel-title">
+                    Actual Java Result
+                </h2>
+
+                <div class="execution-result-grid">
+                    <div>
+                        <div class="complexity-label">
+                            Status
+                        </div>
+
+                        <pre
+                            id="executionMessage"
+                            class="console-output"
+                        >Ready.</pre>
+                    </div>
+
+                    <div>
+                        <div class="complexity-label">
+                            Final array / stdout
+                        </div>
+
+                        <pre
+                            id="programOutput"
+                            class="console-output"
+                        >-</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <script src="main.js"></script>
+</body>
+</html>
