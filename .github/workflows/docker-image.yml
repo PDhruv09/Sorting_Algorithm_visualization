@@ -33,5 +33,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/pdhruv09/sorting-algorithm-visualization:latest
-          
+          tags: |
+            ghcr.io/pdhruv09/sorting-algorithm-visualization:latest
+            ghcr.io/pdhruv09/sorting-algorithm-visualization:security-update
+            ghcr.io/pdhruv09/sorting-algorithm-visualization:${{ github.sha }}
