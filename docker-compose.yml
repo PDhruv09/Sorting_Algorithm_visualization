@@ -1,15 +1,51 @@
 services:
-  app:
-    build: .
+  sorting-visualizer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    image: sorting-visualizer:latest
+
+    container_name: sorting-visualizer
+
     ports:
       - "8000:8000"
+
+    environment:
+      APP_ENV: production
+
+      MAX_SOURCE_CHARS: 50000
+      MAX_ARRAY_LENGTH: 500
+      MAX_REQUEST_BYTES: 100000
+
+      RATE_LIMIT_REQUESTS: 20
+      RATE_LIMIT_WINDOW_SECONDS: 60
+
+      PORT: 8000
+
+    # Run as the same non-root user created in the Dockerfile.
+    user: "999:999"
+
+    # Prevent writes to the application filesystem.
     read_only: true
+
+    # Java compilation and temporary files still need writable space.
     tmpfs:
-      - /tmp:size=256m,noexec,nosuid
-    security_opt:
-      - no-new-privileges:true
+      - /tmp:size=128m,mode=1777
+
+    # Drop Linux capabilities that the web app does not need.
     cap_drop:
       - ALL
-    pids_limit: 64
-    mem_limit: 256m
+
+    # Prevent processes from gaining new privileges.
+    security_opt:
+      - no-new-privileges:true
+
+    # Limit process creation.
+    pids_limit: 128
+
+    # Basic container resource limits for local production-like testing.
+    mem_limit: 512m
     cpus: 1.0
+
+    restart: unless-stopped
