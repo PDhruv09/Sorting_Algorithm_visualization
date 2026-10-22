@@ -2,33 +2,121 @@ let executionSteps = [];
 let currentStepIndex = 0;
 let isPlaying = false;
 let playInterval = null;
+
 let animationSpeed = 500;
+
 let codeLines = [];
 let selectedAlgorithm = null;
 let originalInputArray = [];
 
+
 const $ = (id) => document.getElementById(id);
 
+
+/* ============================================================
+ * Page setup
+ * ============================================================ */
+
 window.addEventListener('load', () => {
-    $('speedSlider').addEventListener('input', (e) => {
-        animationSpeed = parseInt(e.target.value, 10);
-        $('speedValue').textContent = animationSpeed + 'ms';
+    const speedSlider = $('speedSlider');
 
-        if (isPlaying) {
-            pauseResume();
-            pauseResume();
-        }
-    });
+    if (speedSlider) {
+        speedSlider.addEventListener(
+            'input',
+            () => {
+                updateAnimationSpeed();
 
+                if (isPlaying) {
+                    stopPlayback();
+                    pauseResume();
+                }
+            }
+        );
+    }
+
+    updateAnimationSpeed();
     resetVisualization();
     loadStarterExample();
 });
 
 
-function loadStarterExample() {
-    if ($('javaCode').value.trim()) return;
+function updateAnimationSpeed() {
+    const slider = $('speedSlider');
 
-    $('javaCode').value = `public static void insertionSort(int[] arr) {
+    if (!slider) {
+        animationSpeed = 500;
+        return;
+    }
+
+    const level = parseInt(
+        slider.value,
+        10
+    );
+
+    const delays = [
+        2000,
+        1600,
+        1250,
+        1000,
+        750,
+        500,
+        350,
+        250,
+        150,
+        75
+    ];
+
+    const normalizedLevel = Math.max(
+        1,
+        Math.min(
+            10,
+            Number.isFinite(level)
+                ? level
+                : 6
+        )
+    );
+
+    animationSpeed =
+        delays[
+            normalizedLevel - 1
+        ];
+
+    let label;
+
+    if (normalizedLevel <= 3) {
+        label = 'Slow';
+    } else if (normalizedLevel <= 7) {
+        label = 'Normal';
+    } else {
+        label = 'Fast';
+    }
+
+    const speedValue = $('speedValue');
+
+    if (speedValue) {
+        speedValue.textContent =
+            `${label} (${normalizedLevel}/10)`;
+    }
+}
+
+
+/* ============================================================
+ * Starter example
+ * ============================================================ */
+
+function loadStarterExample() {
+    const editor = $('javaCode');
+
+    if (!editor) {
+        return;
+    }
+
+    if (editor.value.trim()) {
+        return;
+    }
+
+    editor.value =
+`public static void insertionSort(int[] arr) {
     for (int i = 1; i < arr.length; i++) {
         int key = arr[i];
         int j = i - 1;
@@ -44,22 +132,32 @@ function loadStarterExample() {
 }
 
 
+/* ============================================================
+ * Input parsing
+ * ============================================================ */
+
 function parseInputArray() {
-    const raw = $('inputArray').value.trim();
+    const raw =
+        $('inputArray').value.trim();
 
     if (!raw) {
-        throw new Error('Input array cannot be empty.');
+        throw new Error(
+            'Input array cannot be empty.'
+        );
     }
 
     const values = raw
         .split(',')
-        .map(x => x.trim())
+        .map(value => value.trim())
         .filter(Boolean)
-        .map(x => Number(x));
+        .map(value => Number(value));
 
     if (
         values.length === 0 ||
-        values.some(x => !Number.isInteger(x))
+        values.some(
+            value =>
+                !Number.isInteger(value)
+        )
     ) {
         throw new Error(
             'Input array must be comma-separated integers.'
@@ -75,33 +173,64 @@ function parseInputArray() {
     return values;
 }
 
-function formatApiError(detail, status) {
+
+/* ============================================================
+ * API error handling
+ * ============================================================ */
+
+function formatApiError(
+    detail,
+    status
+) {
     if (!detail) {
         return `HTTP ${status}`;
     }
 
-    if (typeof detail === 'string') {
+    if (
+        typeof detail ===
+        'string'
+    ) {
         return detail;
     }
 
-    if (Array.isArray(detail)) {
+    if (
+        Array.isArray(detail)
+    ) {
         return detail
             .map(item => {
-                if (typeof item === 'string') {
+                if (
+                    typeof item ===
+                    'string'
+                ) {
                     return item;
                 }
 
-                if (item && typeof item === 'object') {
-                    const location = Array.isArray(item.loc)
-                        ? item.loc
-                            .filter(part => part !== 'body')
-                            .join(' → ')
-                        : '';
+                if (
+                    item &&
+                    typeof item ===
+                    'object'
+                ) {
+                    const location =
+                        Array.isArray(
+                            item.loc
+                        )
+                            ? item.loc
+                                .filter(
+                                    part =>
+                                        part !==
+                                        'body'
+                                )
+                                .join(
+                                    ' → '
+                                )
+                            : '';
 
                     const message =
                         item.msg ||
                         item.message ||
-                        JSON.stringify(item);
+                        JSON.stringify(
+                            item
+                        );
 
                     return location
                         ? `${location}: ${message}`
@@ -113,38 +242,77 @@ function formatApiError(detail, status) {
             .join('\n');
     }
 
-    if (typeof detail === 'object') {
+    if (
+        typeof detail ===
+        'object'
+    ) {
         return (
             detail.message ||
             detail.msg ||
-            JSON.stringify(detail)
+            JSON.stringify(
+                detail
+            )
         );
     }
 
     return String(detail);
 }
 
+function scrollToVisualization() {
+    const panel =
+        $('visualizationPanel');
+
+    if (!panel) {
+        return;
+    }
+
+    panel.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start'
+    });
+}
+
+/* ============================================================
+ * Execute submitted Java
+ * ============================================================ */
+
 async function executeCode() {
     clearError();
     clearInfo();
     stopPlayback();
 
-    const code = $('javaCode').value;
+    const code =
+        $('javaCode').value;
 
     let inputArray;
 
     try {
-        inputArray = parseInputArray();
-        originalInputArray = [...inputArray];
-    } catch (e) {
-        showError(e.message);
+        inputArray =
+            parseInputArray();
+
+        originalInputArray =
+            [...inputArray];
+
+    } catch (error) {
+        showError(
+            error.message
+        );
+
         return;
     }
 
     if (!code.trim()) {
-        showError('Code cannot be empty.');
+        showError(
+            'Code cannot be empty.'
+        );
+
         return;
     }
+
+    selectedAlgorithm =
+        detectAlgorithmFromCode(
+            code
+        );
 
     setResult(
         'Running javac and the actual Java method…',
@@ -152,26 +320,52 @@ async function executeCode() {
         false
     );
 
-    document.querySelector('.btn-primary').disabled = true;
+    scrollToVisualization();
+
+    const executeButton =
+        document.querySelector(
+            '.btn-primary'
+        );
+
+    if (executeButton) {
+        executeButton.disabled = true;
+    }
 
     try {
-        const response = await fetch('/api/execute', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                code,
-                inputArray,
-                methodName:
-                    $('methodName').value.trim() || null
-            })
-        });
+        const response =
+            await fetch(
+                '/api/execute',
+                {
+                    method: 'POST',
+
+                    headers: {
+                        'Content-Type':
+                            'application/json'
+                    },
+
+                    body:
+                        JSON.stringify(
+                            {
+                                code,
+
+                                inputArray,
+
+                                methodName:
+                                    $('methodName')
+                                        .value
+                                        .trim() ||
+                                    null
+                            }
+                        )
+                }
+            );
 
         let result;
 
         try {
-            result = await response.json();
+            result =
+                await response.json();
+
         } catch {
             throw new Error(
                 `Server returned HTTP ${response.status} without valid JSON.`
@@ -187,27 +381,52 @@ async function executeCode() {
             );
         }
 
-        codeLines = code.split('\n');
+        codeLines =
+            code.split('\n');
 
         displayCode();
-        analyzeComplexity(code);
+
+        analyzeComplexity(
+            code
+        );
 
         if (!result.success) {
             executionSteps =
-                Array.isArray(result.trace)
-                    ? result.trace
+                Array.isArray(
+                    result.trace
+                )
+                    ? normalizeTrace(
+                        result.trace,
+                        inputArray
+                    )
                     : [];
 
-            currentStepIndex = Math.max(
-                0,
-                executionSteps.length - 1
-            );
+            currentStepIndex =
+                Math.max(
+                    0,
+                    executionSteps.length -
+                        1
+                );
 
-            if (executionSteps.length) {
-                visualizeStep(currentStepIndex);
+            if (
+                executionSteps.length
+            ) {
+                visualizeStep(
+                    currentStepIndex
+                );
+            } else {
+                renderVisualization(
+                    inputArray,
+                    null
+                );
+
+                updateStatus();
             }
 
-            const label = formatErrorType(result.type);
+            const label =
+                formatErrorType(
+                    result.type
+                );
 
             setResult(
                 `${label}\n${result.message || 'Execution failed.'}`,
@@ -217,26 +436,34 @@ async function executeCode() {
 
             showError(
                 `${label}: ${firstLine(
-                    result.message || 'Execution failed.'
+                    result.message ||
+                    'Execution failed.'
                 )}`
             );
 
             return;
         }
 
-        executionSteps = normalizeTrace(
-            result.trace || [],
-            inputArray
-        );
+        executionSteps =
+            normalizeTrace(
+                result.trace || [],
+                inputArray
+            );
 
         currentStepIndex = 0;
 
         updateStatus();
 
-        if (executionSteps.length) {
+        if (
+            executionSteps.length
+        ) {
             visualizeStep(0);
+
         } else {
-            renderVisualization(inputArray, null);
+            renderVisualization(
+                inputArray,
+                null
+            );
         }
 
         let message =
@@ -244,11 +471,26 @@ async function executeCode() {
             `Class: ${result.className}\n` +
             `Method: ${result.methodName}`;
 
-        if (result.traceAvailable === false) {
+        if (
+            selectedAlgorithm
+        ) {
+            message +=
+                `\nDetected visualization mode: ` +
+                `${formatAlgorithmName(
+                    selectedAlgorithm
+                )}`;
+        }
+
+        if (
+            result.traceAvailable ===
+            false
+        ) {
             message +=
                 `\n\nVisualization note: ` +
-                `${result.traceNote ||
-                'Intermediate tracing was unavailable, but the actual Java code still ran.'}`;
+                `${
+                    result.traceNote ||
+                    'Intermediate tracing was unavailable, but the actual Java code still ran.'
+                }`;
 
             showInfo(
                 result.traceNote ||
@@ -278,109 +520,168 @@ async function executeCode() {
             false
         );
 
-        if (executionSteps.length > 1) {
+        if (
+            executionSteps.length >
+            1
+        ) {
             pauseResume();
         }
 
     } catch (error) {
         setResult(
-            'Runner error\n' + error.message,
+            'Runner error\n' +
+                error.message,
             '',
             true
         );
 
-        showError(error.message);
+        showError(
+            error.message
+        );
 
     } finally {
-        document.querySelector(
-            '.btn-primary'
-        ).disabled = false;
+        if (executeButton) {
+            executeButton.disabled =
+                false;
+        }
     }
 }
 
 
-function normalizeTrace(trace, initial) {
-    if (!Array.isArray(trace)) {
+/* ============================================================
+ * Trace normalization
+ * ============================================================ */
+
+function normalizeTrace(
+    trace,
+    initial
+) {
+    if (
+        !Array.isArray(trace)
+    ) {
         return [];
     }
 
-    const result = trace.filter(
-        step =>
-            step &&
-            Array.isArray(step.array)
-    );
+    const result =
+        trace.filter(
+            step =>
+                step &&
+                Array.isArray(
+                    step.array
+                )
+        );
 
-    if (result.length === 0) {
-        return [{
-            type: 'start',
-            data: {
-                indices: []
-            },
-            array: [...initial],
-            lineNum: 0,
-            comparisons: 0,
-            swaps: 0,
-            arrayAccesses: 0
-        }];
+    if (
+        result.length === 0
+    ) {
+        return [
+            {
+                type: 'start',
+
+                data: {
+                    indices: []
+                },
+
+                array:
+                    [...initial],
+
+                lineNum: 0,
+
+                comparisons: 0,
+
+                swaps: 0,
+
+                arrayAccesses: 0
+            }
+        ];
     }
 
-    return coalesceSwaps(result);
+    return coalesceSwaps(
+        result
+    );
 }
 
 
-function coalesceSwaps(steps) {
+/*
+ * Java swaps are usually implemented as several assignments.
+ *
+ * The backend traces literal assignments. This pass recognizes
+ * pairs of writes that together form a conceptual swap so the
+ * visualization can show one swap operation instead of two
+ * unrelated writes.
+ */
+function coalesceSwaps(
+    steps
+) {
     const output = [];
 
     let i = 0;
 
-    while (i < steps.length) {
-        const current = steps[i];
+    while (
+        i < steps.length
+    ) {
+        const current =
+            steps[i];
 
         const previous =
             output.length
-                ? output[output.length - 1]
+                ? output[
+                    output.length - 1
+                ]
                 : null;
 
         if (
             previous &&
-            current.type === 'write' &&
+            current.type ===
+                'write' &&
             current.data &&
             Array.isArray(
                 current.data.indices
             ) &&
-            current.data.indices.length === 1
+            current.data.indices
+                .length === 1
         ) {
             const firstIndex =
-                current.data.indices[0];
+                current.data
+                    .indices[0];
 
-            let secondWritePosition = -1;
+            let secondWritePosition =
+                -1;
 
             for (
                 let j = i + 1;
-                j < Math.min(
-                    steps.length,
-                    i + 5
-                );
+                j <
+                    Math.min(
+                        steps.length,
+                        i + 5
+                    );
                 j++
             ) {
-                const candidate = steps[j];
+                const candidate =
+                    steps[j];
 
                 if (
-                    candidate.type === 'write' &&
+                    candidate.type ===
+                        'write' &&
                     candidate.data &&
                     Array.isArray(
-                        candidate.data.indices
+                        candidate.data
+                            .indices
                     ) &&
-                    candidate.data.indices.length === 1
+                    candidate.data
+                        .indices
+                        .length === 1
                 ) {
-                    secondWritePosition = j;
+                    secondWritePosition =
+                        j;
+
                     break;
                 }
 
                 /*
-                 * If the array changes for some other
-                 * reason before the second write,
-                 * this is not a simple swap.
+                 * If the array changes for another reason
+                 * before a second write, this is not a
+                 * straightforward conceptual swap.
                  */
                 if (
                     !arraysEqual(
@@ -393,16 +694,21 @@ function coalesceSwaps(steps) {
             }
 
             if (
-                secondWritePosition !== -1
+                secondWritePosition !==
+                -1
             ) {
                 const second =
-                    steps[secondWritePosition];
+                    steps[
+                        secondWritePosition
+                    ];
 
                 const secondIndex =
-                    second.data.indices[0];
+                    second.data
+                        .indices[0];
 
                 if (
-                    firstIndex !== secondIndex &&
+                    firstIndex !==
+                        secondIndex &&
                     isExactSwap(
                         previous.array,
                         second.array,
@@ -410,47 +716,50 @@ function coalesceSwaps(steps) {
                         secondIndex
                     )
                 ) {
-                    output.push({
-                        ...second,
+                    output.push(
+                        {
+                            ...second,
 
-                        type: 'swap',
+                            type:
+                                'swap',
 
-                        data: {
-                            indices: [
-                                firstIndex,
-                                secondIndex
-                            ]
+                            data: {
+                                indices: [
+                                    firstIndex,
+                                    secondIndex
+                                ]
+                            }
                         }
-                    });
+                    );
 
-                    /*
-                     * Skip the two individual
-                     * assignment/write states and
-                     * display one conceptual swap.
-                     */
                     i =
-                        secondWritePosition + 1;
+                        secondWritePosition +
+                        1;
 
                     continue;
                 }
             }
         }
 
-        output.push(current);
+        output.push(
+            current
+        );
 
         i++;
     }
 
     /*
-     * The backend records literal Java assignments.
-     * Now that the frontend has recognized conceptual
-     * swaps, recalculate swaps as a cumulative
-     * semantic count.
+     * Recalculate the swap count using semantic swaps
+     * recognized above.
      */
     let semanticSwapCount = 0;
 
-    for (const step of output) {
-        if (step.type === 'swap') {
+    for (
+        const step of output
+    ) {
+        if (
+            step.type === 'swap'
+        ) {
             semanticSwapCount++;
         }
 
@@ -462,21 +771,31 @@ function coalesceSwaps(steps) {
 }
 
 
-function arraysEqual(a, b) {
+function arraysEqual(
+    first,
+    second
+) {
     if (
-        !Array.isArray(a) ||
-        !Array.isArray(b)
+        !Array.isArray(first) ||
+        !Array.isArray(second)
     ) {
         return false;
     }
 
-    if (a.length !== b.length) {
+    if (
+        first.length !==
+        second.length
+    ) {
         return false;
     }
 
-    return a.every(
-        (value, index) =>
-            value === b[index]
+    return first.every(
+        (
+            value,
+            index
+        ) =>
+            value ===
+            second[index]
     );
 }
 
@@ -484,41 +803,37 @@ function arraysEqual(a, b) {
 function isExactSwap(
     before,
     after,
-    i,
-    j
+    firstIndex,
+    secondIndex
 ) {
     if (
         !Array.isArray(before) ||
         !Array.isArray(after) ||
-        before.length !== after.length
+        before.length !==
+            after.length
     ) {
         return false;
     }
 
-    /*
-     * The values at i and j must have
-     * exchanged positions.
-     */
     if (
-        before[i] !== after[j] ||
-        before[j] !== after[i]
+        before[firstIndex] !==
+            after[secondIndex] ||
+        before[secondIndex] !==
+            after[firstIndex]
     ) {
         return false;
     }
 
-    /*
-     * Every other location must remain
-     * unchanged.
-     */
     for (
-        let k = 0;
-        k < before.length;
-        k++
+        let index = 0;
+        index < before.length;
+        index++
     ) {
         if (
-            k !== i &&
-            k !== j &&
-            before[k] !== after[k]
+            index !== firstIndex &&
+            index !== secondIndex &&
+            before[index] !==
+                after[index]
         ) {
             return false;
         }
@@ -528,7 +843,13 @@ function isExactSwap(
 }
 
 
-function formatErrorType(type) {
+/* ============================================================
+ * Execution results
+ * ============================================================ */
+
+function formatErrorType(
+    type
+) {
     const names = {
         compile_error:
             'Compilation Error',
@@ -543,13 +864,15 @@ function formatErrorType(type) {
             'Execution Timeout'
     };
 
-    return names[type] ||
-        'Execution Error';
+    return (
+        names[type] ||
+        'Execution Error'
+    );
 }
 
 
-function firstLine(s) {
-    return String(s)
+function firstLine(value) {
+    return String(value)
         .split('\n')[0];
 }
 
@@ -559,38 +882,55 @@ function setResult(
     output,
     error
 ) {
-    const msg =
+    const messageElement =
         $('executionMessage');
 
-    const out =
+    const outputElement =
         $('programOutput');
 
-    msg.textContent =
-        message || '-';
+    if (messageElement) {
+        messageElement.textContent =
+            message || '-';
 
-    out.textContent =
-        output || '-';
+        messageElement
+            .classList
+            .toggle(
+                'error',
+                Boolean(error)
+            );
 
-    msg.classList.toggle(
-        'error',
-        !!error
-    );
+        messageElement
+            .classList
+            .toggle(
+                'success',
+                !error &&
+                message &&
+                message !==
+                    'Ready.'
+            );
+    }
 
-    msg.classList.toggle(
-        'success',
-        !error &&
-        message &&
-        message !== 'Ready.'
-    );
+    if (outputElement) {
+        outputElement.textContent =
+            output || '-';
+    }
 }
 
 
-function showError(message) {
+/* ============================================================
+ * User notices
+ * ============================================================ */
+
+function showError(
+    message
+) {
     clearError();
     clearInfo();
 
     const errorDiv =
-        document.createElement('div');
+        document.createElement(
+            'div'
+        );
 
     errorDiv.className =
         'error-message';
@@ -601,17 +941,28 @@ function showError(message) {
     errorDiv.textContent =
         message;
 
-    document
-        .querySelector('.code-editor')
-        .appendChild(errorDiv);
+    const codeEditor =
+        document.querySelector(
+            '.code-editor'
+        );
+
+    if (codeEditor) {
+        codeEditor.appendChild(
+            errorDiv
+        );
+    }
 }
 
 
-function showInfo(message) {
+function showInfo(
+    message
+) {
     clearInfo();
 
     const infoDiv =
-        document.createElement('div');
+        document.createElement(
+            'div'
+        );
 
     infoDiv.className =
         'info-message';
@@ -622,40 +973,59 @@ function showInfo(message) {
     infoDiv.textContent =
         message;
 
-    document
-        .querySelector('.code-editor')
-        .appendChild(infoDiv);
+    const codeEditor =
+        document.querySelector(
+            '.code-editor'
+        );
+
+    if (codeEditor) {
+        codeEditor.appendChild(
+            infoDiv
+        );
+    }
 }
 
 
 function clearError() {
-    const el =
+    const element =
         $('error-display');
 
-    if (el) {
-        el.remove();
+    if (element) {
+        element.remove();
     }
 }
 
 
 function clearInfo() {
-    const el =
+    const element =
         $('info-display');
 
-    if (el) {
-        el.remove();
+    if (element) {
+        element.remove();
     }
 }
 
+
+/* ============================================================
+ * Source-code display
+ * ============================================================ */
 
 function displayCode() {
     const codeDisplay =
         $('codeDisplay');
 
-    codeDisplay.innerHTML = '';
+    if (!codeDisplay) {
+        return;
+    }
+
+    codeDisplay.innerHTML =
+        '';
 
     codeLines.forEach(
-        (line, index) => {
+        (
+            line,
+            index
+        ) => {
             const lineDiv =
                 document.createElement(
                     'div'
@@ -672,33 +1042,47 @@ function displayCode() {
             lineDiv.dataset.line =
                 index;
 
-            codeDisplay.appendChild(
-                lineDiv
-            );
+            codeDisplay
+                .appendChild(
+                    lineDiv
+                );
         }
     );
 }
 
 
-function escapeHtml(text) {
+function escapeHtml(
+    text
+) {
     const div =
-        document.createElement('div');
+        document.createElement(
+            'div'
+        );
 
-    div.textContent = text;
+    div.textContent =
+        text;
 
     return div.innerHTML;
 }
 
 
-function visualizeStep(index) {
+/* ============================================================
+ * Trace visualization
+ * ============================================================ */
+
+function visualizeStep(
+    index
+) {
     if (
         index < 0 ||
-        index >= executionSteps.length
+        index >=
+            executionSteps.length
     ) {
         return;
     }
 
-    currentStepIndex = index;
+    currentStepIndex =
+        index;
 
     const step =
         executionSteps[index];
@@ -709,12 +1093,15 @@ function visualizeStep(index) {
     );
 
     document
-        .querySelectorAll('.code-line')
+        .querySelectorAll(
+            '.code-line'
+        )
         .forEach(
             line =>
-                line.classList.remove(
-                    'executing'
-                )
+                line.classList
+                    .remove(
+                        'executing'
+                    )
         );
 
     const lineNum =
@@ -737,166 +1124,282 @@ function visualizeStep(index) {
         const codeDisplay =
             $('codeDisplay');
 
-        const lineTop =
-            currentLine.offsetTop;
+        if (codeDisplay) {
+            const lineTop =
+                currentLine.offsetTop;
 
-        const lineHeight =
-            currentLine.offsetHeight;
+            const lineHeight =
+                currentLine.offsetHeight;
 
-        const containerHeight =
-            codeDisplay.clientHeight;
+            const containerHeight =
+                codeDisplay.clientHeight;
 
-        const targetScroll =
-            lineTop -
-            containerHeight / 2 +
-            lineHeight / 2;
+            const targetScroll =
+                lineTop -
+                containerHeight / 2 +
+                lineHeight / 2;
 
-        codeDisplay.scrollTo({
-            top: Math.max(0, targetScroll),
-            behavior: 'smooth'
-        });
+            codeDisplay.scrollTo(
+                {
+                    top:
+                        Math.max(
+                            0,
+                            targetScroll
+                        ),
+
+                    behavior:
+                        'smooth'
+                }
+            );
+        }
     }
 
     updateStatus();
 }
 
 
-function renderVisualization(values, step) {
-    if (selectedAlgorithm === 'quick') {
-        renderQuickVisualization(values, step);
-        return;
-    }
+/* ============================================================
+ * Visualization routing
+ * ============================================================ */
 
-    if (selectedAlgorithm === 'counting') {
-        renderCountingVisualization(values, step);
-        return;
-    }
-
-    if (selectedAlgorithm === 'bucket') {
-        renderBucketVisualization(values, step);
-        return;
-    }
-
-    renderArray(values, step);
-}
-
-
-function buildBars(container, values, step, maxHeight = 300) {
-    if (!values || values.length === 0) return;
-
-    const maxAbs = Math.max(
-        1,
-        ...values.map(v => Math.abs(v))
-    );
-
-    const arraySize = values.length;
-    const containerWidth = Math.max(
-        300,
-        container.clientWidth - 40
-    );
-
-    let barWidth = arraySize <= 20
-        ? Math.floor(containerWidth / arraySize) - 4
-        : Math.max(
-            10,
-            Math.floor(containerWidth / arraySize) - 3
+function renderVisualization(
+    values,
+    step
+) {
+    if (
+        selectedAlgorithm ===
+        'quick'
+    ) {
+        renderQuickVisualization(
+            values,
+            step
         );
 
-    barWidth = Math.max(
-        8,
-        barWidth
+        return;
+    }
+
+    if (
+        selectedAlgorithm ===
+        'counting'
+    ) {
+        renderCountingVisualization(
+            values,
+            step
+        );
+
+        return;
+    }
+
+    if (
+        selectedAlgorithm ===
+        'heap'
+    ) {
+        renderHeapVisualization(
+            values,
+            step
+        );
+
+        return;
+    }
+
+    if (
+        selectedAlgorithm ===
+        'bucket'
+    ) {
+        renderBucketVisualization(
+            values,
+            step
+        );
+
+        return;
+    }
+
+    renderArray(
+        values,
+        step
     );
-
-    const changed = new Set(
-        step &&
-        step.data &&
-        Array.isArray(step.data.indices)
-            ? step.data.indices
-            : []
-    );
-
-    values.forEach((value, idx) => {
-        const bar =
-            document.createElement('div');
-
-        bar.className = 'bar';
-
-        const scaled =
-            Math.max(
-                8,
-                Math.round(
-                    (
-                        Math.abs(value) /
-                        maxAbs
-                    ) *
-                    maxHeight
-                )
-            );
-
-        bar.style.height =
-            scaled + 'px';
-
-        bar.style.width =
-            barWidth + 'px';
-
-        bar.title =
-            `Index ${idx}: ${value}`;
-
-        if (step) {
-            if (
-                step.type === 'condition' &&
-                changed.has(idx)
-            ) {
-                bar.classList.add(
-                    'comparing'
-                );
-
-            } else if (
-                step.type === 'swap' &&
-                changed.has(idx)
-            ) {
-                bar.classList.add(
-                    'swapping'
-                );
-
-            } else if (
-                step.type === 'write' &&
-                changed.has(idx)
-            ) {
-                bar.classList.add(
-                    'writing'
-                );
-
-            } else if (
-                step.type === 'complete'
-            ) {
-                bar.classList.add(
-                    'sorted'
-                );
-            }
-        }
-
-        const label =
-            document.createElement('span');
-
-        label.className =
-            'bar-value-label';
-
-        label.textContent =
-            value;
-
-        bar.appendChild(label);
-
-        container.appendChild(bar);
-    });
 }
 
 
-function renderArray(values, step) {
+/* ============================================================
+ * Generic bar visualization
+ * ============================================================ */
+
+function buildBars(
+    container,
+    values,
+    step,
+    maxHeight = 300
+) {
+    if (
+        !values ||
+        values.length === 0
+    ) {
+        return;
+    }
+
+    const maxAbs =
+        Math.max(
+            1,
+            ...values.map(
+                value =>
+                    Math.abs(value)
+            )
+        );
+
+    const arraySize =
+        values.length;
+
+    const containerWidth =
+        Math.max(
+            300,
+            container.clientWidth -
+                40
+        );
+
+    let barWidth =
+        arraySize <= 20
+            ? Math.floor(
+                containerWidth /
+                arraySize
+            ) - 4
+            : Math.max(
+                10,
+                Math.floor(
+                    containerWidth /
+                    arraySize
+                ) - 3
+            );
+
+    barWidth =
+        Math.max(
+            8,
+            barWidth
+        );
+
+    const changed =
+        new Set(
+            step &&
+            step.data &&
+            Array.isArray(
+                step.data.indices
+            )
+                ? step.data.indices
+                : []
+        );
+
+    values.forEach(
+        (
+            value,
+            index
+        ) => {
+            const bar =
+                document
+                    .createElement(
+                        'div'
+                    );
+
+            bar.className =
+                'bar';
+
+            const scaled =
+                Math.max(
+                    8,
+                    Math.round(
+                        (
+                            Math.abs(
+                                value
+                            ) /
+                            maxAbs
+                        ) *
+                        maxHeight
+                    )
+                );
+
+            bar.style.height =
+                scaled + 'px';
+
+            bar.style.width =
+                barWidth + 'px';
+
+            bar.title =
+                `Index ${index}: ${value}`;
+
+            if (step) {
+                if (
+                    step.type ===
+                        'condition' &&
+                    changed.has(index)
+                ) {
+                    bar.classList.add(
+                        'comparing'
+                    );
+
+                } else if (
+                    step.type ===
+                        'swap' &&
+                    changed.has(index)
+                ) {
+                    bar.classList.add(
+                        'swapping'
+                    );
+
+                } else if (
+                    step.type ===
+                        'write' &&
+                    changed.has(index)
+                ) {
+                    bar.classList.add(
+                        'writing'
+                    );
+
+                } else if (
+                    step.type ===
+                    'complete'
+                ) {
+                    bar.classList.add(
+                        'sorted'
+                    );
+                }
+            }
+
+            const label =
+                document
+                    .createElement(
+                        'span'
+                    );
+
+            label.className =
+                'bar-value-label';
+
+            label.textContent =
+                value;
+
+            bar.appendChild(
+                label
+            );
+
+            container.appendChild(
+                bar
+            );
+        }
+    );
+}
+
+
+function renderArray(
+    values,
+    step
+) {
     const visualArea =
         $('visualizationArea');
 
-    visualArea.innerHTML = '';
+    if (!visualArea) {
+        return;
+    }
+
+    visualArea.innerHTML =
+        '';
 
     if (
         !values ||
@@ -906,7 +1409,9 @@ function renderArray(values, step) {
     }
 
     const bars =
-        document.createElement('div');
+        document.createElement(
+            'div'
+        );
 
     bars.className =
         'bars-stage';
@@ -924,11 +1429,19 @@ function renderArray(values, step) {
 }
 
 
-function renderQuickVisualization(values, step) {
+/* ============================================================
+ * Quick Sort visualization
+ * ============================================================ */
+
+function renderQuickVisualization(
+    values,
+    step
+) {
     const visualArea =
         $('visualizationArea');
 
-    visualArea.innerHTML = '';
+    visualArea.innerHTML =
+        '';
 
     if (
         !values ||
@@ -938,14 +1451,18 @@ function renderQuickVisualization(values, step) {
     }
 
     const detail =
-        document.createElement('div');
+        document.createElement(
+            'div'
+        );
 
     detail.className =
         'algorithm-detail quick-detail';
 
     const line =
         step &&
-        Number.isInteger(step.lineNum)
+        Number.isInteger(
+            step.lineNum
+        )
             ? (
                 codeLines[
                     step.lineNum
@@ -956,40 +1473,47 @@ function renderQuickVisualization(values, step) {
     let phase =
         'Partition / recursion';
 
-    if (/pivot/i.test(line)) {
+    if (
+        /pivot/i.test(line)
+    ) {
         phase =
             'Pivot handling';
 
     } else if (
         step &&
-        step.type === 'condition'
+        step.type ===
+            'condition'
     ) {
         phase =
             'Partition comparison';
 
     } else if (
         step &&
-        step.type === 'swap'
+        step.type ===
+            'swap'
     ) {
         phase =
             'Partition swap';
 
     } else if (
         step &&
-        step.type === 'method-entry'
+        step.type ===
+            'method-entry'
     ) {
         phase =
             'Recursive/helper entry';
 
     } else if (
         step &&
-        step.type === 'complete'
+        step.type ===
+            'complete'
     ) {
         phase =
             'Quick Sort complete';
     }
 
-    detail.innerHTML = `
+    detail.innerHTML =
+        `
         <div class="algorithm-detail-title">
             Quick Sort — Partition View
         </div>
@@ -997,14 +1521,20 @@ function renderQuickVisualization(values, step) {
         <div class="algorithm-detail-grid">
             <div>
                 <span>Phase</span>
-                <strong>${escapeHtml(phase)}</strong>
+                <strong>
+                    ${escapeHtml(phase)}
+                </strong>
             </div>
 
             <div>
                 <span>Current action</span>
-                <strong>${escapeHtml(
-                    describeStep(step)
-                )}</strong>
+                <strong>
+                    ${escapeHtml(
+                        describeStep(
+                            step
+                        )
+                    )}
+                </strong>
             </div>
         </div>
 
@@ -1013,11 +1543,13 @@ function renderQuickVisualization(values, step) {
             Pivot/range details are shown only when they can
             be inferred safely from the executed source line.
         </div>
-    `;
+        `;
 
     if (line) {
         const sourceLine =
-            document.createElement('div');
+            document.createElement(
+                'div'
+            );
 
         sourceLine.className =
             'source-context';
@@ -1035,7 +1567,9 @@ function renderQuickVisualization(values, step) {
     );
 
     const bars =
-        document.createElement('div');
+        document.createElement(
+            'div'
+        );
 
     bars.className =
         'bars-stage compact-bars';
@@ -1051,16 +1585,21 @@ function renderQuickVisualization(values, step) {
         240
     );
 }
-
+/* ============================================================
+ * Counting Sort visualization
+ * ============================================================ */
 
 function getCountingReference() {
-    if (!originalInputArray.length) {
+    if (
+        !originalInputArray.length
+    ) {
         return null;
     }
 
     if (
         originalInputArray.some(
-            v => v < 0
+            value =>
+                value < 0
         )
     ) {
         return null;
@@ -1076,12 +1615,15 @@ function getCountingReference() {
     }
 
     const counts =
-        new Array(max + 1)
-            .fill(0);
+        new Array(
+            max + 1
+        ).fill(0);
 
-    originalInputArray.forEach(
-        v => counts[v]++
-    );
+    originalInputArray
+        .forEach(
+            value =>
+                counts[value]++
+        );
 
     return counts;
 }
@@ -1094,7 +1636,8 @@ function renderCountingVisualization(
     const visualArea =
         $('visualizationArea');
 
-    visualArea.innerHTML = '';
+    visualArea.innerHTML =
+        '';
 
     if (
         !values ||
@@ -1107,7 +1650,9 @@ function renderCountingVisualization(
         getCountingReference();
 
     const detail =
-        document.createElement('div');
+        document.createElement(
+            'div'
+        );
 
     detail.className =
         'algorithm-detail counting-detail';
@@ -1124,7 +1669,8 @@ function renderCountingVisualization(
     const currentValue =
         (
             step &&
-            step.type === 'write' &&
+            step.type ===
+                'write' &&
             changed.length === 1 &&
             Number.isInteger(
                 changed[0]
@@ -1135,18 +1681,18 @@ function renderCountingVisualization(
             ]
             : null;
 
-    detail.innerHTML = `
+    detail.innerHTML =
+        `
         <div class="algorithm-detail-title">
             Counting Sort — Frequency View
         </div>
 
         <div class="algorithm-detail-note">
-            Frequency cells are derived from the
-            original input as a reference.
-            The main array below is always the
-            actual Java execution trace.
+            Frequency cells are derived from the original
+            input as a reference. The main array below is
+            always the actual Java execution trace.
         </div>
-    `;
+        `;
 
     if (counts) {
         const grid =
@@ -1158,29 +1704,38 @@ function renderCountingVisualization(
             'count-grid';
 
         counts.forEach(
-            (count, value) => {
+            (
+                count,
+                value
+            ) => {
                 const cell =
-                    document.createElement(
-                        'div'
-                    );
+                    document
+                        .createElement(
+                            'div'
+                        );
 
                 cell.className =
                     'count-cell';
 
                 if (
-                    currentValue === value
+                    currentValue ===
+                    value
                 ) {
                     cell.classList.add(
                         'active'
                     );
                 }
 
-                cell.innerHTML = `
+                cell.innerHTML =
+                    `
                     <span class="count-value">
                         ${value}
                     </span>
-                    <strong>${count}</strong>
-                `;
+
+                    <strong>
+                        ${count}
+                    </strong>
+                    `;
 
                 grid.appendChild(
                     cell
@@ -1234,52 +1789,43 @@ function renderCountingVisualization(
 }
 
 
-function detectBucketReference(code) {
-    const countMatch =
-        code.match(
-            /\bbucketCount\s*=\s*(\d+)\s*;/
-        );
+/* ============================================================
+ * Bucket Sort visualization
+ * ============================================================ */
 
-    if (
-        !countMatch ||
-        !originalInputArray.length
-    ) {
+function detectBucketCount(
+    code
+) {
+    const match =
+        String(code || '')
+            .match(
+                /\bbucketCount\s*=\s*(\d+)\s*;/
+            );
+
+    if (!match) {
         return null;
     }
 
-    const bucketCount =
+    const count =
         Number(
-            countMatch[1]
+            match[1]
         );
 
     if (
-        !Number.isInteger(
-            bucketCount
-        ) ||
-        bucketCount < 1 ||
-        bucketCount > 20
+        !Number.isInteger(count) ||
+        count < 1 ||
+        count > 20
     ) {
         return null;
     }
 
-    const standardFormula =
-        /\(\s*\w+\s*\*\s*bucketCount\s*\)\s*\/\s*\(\s*max\s*\+\s*1\s*\)/.test(
-            code
-        );
+    return count;
+}
 
-    if (!standardFormula) {
-        return null;
-    }
 
-    const max =
-        Math.max(
-            ...originalInputArray
-        );
-
-    if (max < 0) {
-        return null;
-    }
-
+function getLiveBucketState(
+    bucketCount
+) {
     const buckets =
         Array.from(
             {
@@ -1289,29 +1835,51 @@ function detectBucketReference(code) {
             () => []
         );
 
+    const end =
+        Math.min(
+            currentStepIndex,
+            executionSteps.length - 1
+        );
+
     for (
-        const value
-        of originalInputArray
+        let index = 0;
+        index <= end;
+        index++
     ) {
-        const index =
-            Math.floor(
-                (
-                    value *
-                    bucketCount
-                ) /
-                (max + 1)
-            );
+        const traceStep =
+            executionSteps[index];
 
         if (
-            index < 0 ||
-            index >= bucketCount
+            !traceStep ||
+            traceStep.type !==
+                'bucket-write' ||
+            !traceStep.data
         ) {
-            return null;
+            continue;
         }
 
-        buckets[index].push(
-            value
-        );
+        const bucketIndex =
+            traceStep.data
+                .bucketIndex;
+
+        const value =
+            traceStep.data
+                .value;
+
+        if (
+            Number.isInteger(
+                bucketIndex
+            ) &&
+            bucketIndex >= 0 &&
+            bucketIndex <
+                buckets.length
+        ) {
+            buckets[
+                bucketIndex
+            ].push(
+                value
+            );
+        }
     }
 
     return buckets;
@@ -1325,7 +1893,8 @@ function renderBucketVisualization(
     const visualArea =
         $('visualizationArea');
 
-    visualArea.innerHTML = '';
+    visualArea.innerHTML =
+        '';
 
     if (
         !values ||
@@ -1337,32 +1906,81 @@ function renderBucketVisualization(
     const code =
         $('javaCode').value;
 
-    const buckets =
-        detectBucketReference(
+    const bucketCount =
+        detectBucketCount(
             code
         );
 
     const detail =
-        document.createElement('div');
+        document.createElement(
+            'div'
+        );
 
     detail.className =
         'algorithm-detail bucket-detail';
 
-    detail.innerHTML = `
+    detail.innerHTML =
+        `
         <div class="algorithm-detail-title">
             Bucket Sort — Bucket View
         </div>
 
-        <div class="algorithm-detail-note">
-            When the common bucket formula is detected,
-            this reference shows how the original input
-            is distributed.
-            The array animation remains the actual
-            Java trace.
-        </div>
-    `;
+        <div class="algorithm-detail-grid">
+            <div>
+                <span>Phase</span>
 
-    if (buckets) {
+                <strong>
+                    ${
+                        step &&
+                        step.type ===
+                            'bucket-write'
+                            ? 'Distributing into buckets'
+                            : step &&
+                              step.type ===
+                                'complete'
+                                ? 'Bucket Sort complete'
+                                : 'Executing Bucket Sort'
+                    }
+                </strong>
+            </div>
+
+            <div>
+                <span>Current action</span>
+
+                <strong>
+                    ${escapeHtml(
+                        describeStep(
+                            step
+                        )
+                    )}
+                </strong>
+            </div>
+        </div>
+
+        <div class="algorithm-detail-note">
+            Bucket contents below are filled from bucket-write
+            events emitted by the actual Java execution.
+        </div>
+        `;
+
+
+    if (bucketCount) {
+        const buckets =
+            getLiveBucketState(
+                bucketCount
+            );
+
+        const activeBucket =
+            (
+                step &&
+                step.type ===
+                    'bucket-write' &&
+                step.data
+            )
+                ? step.data
+                    .bucketIndex
+                : null;
+
         const bucketGrid =
             document.createElement(
                 'div'
@@ -1371,42 +1989,92 @@ function renderBucketVisualization(
         bucketGrid.className =
             'bucket-grid';
 
-        buckets.forEach(
-            (bucket, index) => {
-                const bucketEl =
-                    document.createElement(
-                        'div'
-                    );
 
-                bucketEl.className =
+        buckets.forEach(
+            (
+                bucket,
+                index
+            ) => {
+                const bucketElement =
+                    document
+                        .createElement(
+                            'div'
+                        );
+
+                bucketElement.className =
                     'bucket-column';
 
-                bucketEl.innerHTML =
-                    `<span class="bucket-title">` +
-                    `Bucket ${index}` +
-                    `</span>`;
+                if (
+                    index ===
+                    activeBucket
+                ) {
+                    bucketElement
+                        .classList
+                        .add(
+                            'active'
+                        );
+                }
+
+                const title =
+                    document
+                        .createElement(
+                            'span'
+                        );
+
+                title.className =
+                    'bucket-title';
+
+                title.textContent =
+                    `Bucket ${index}`;
+
+                bucketElement
+                    .appendChild(
+                        title
+                    );
+
 
                 const valuesWrap =
-                    document.createElement(
-                        'div'
-                    );
+                    document
+                        .createElement(
+                            'div'
+                        );
 
                 valuesWrap.className =
                     'bucket-values';
 
+
                 if (
-                    bucket.length === 0
+                    bucket.length ===
+                    0
                 ) {
-                    valuesWrap.innerHTML =
-                        '<span class="bucket-empty">empty</span>';
+                    const empty =
+                        document
+                            .createElement(
+                                'span'
+                            );
+
+                    empty.className =
+                        'bucket-empty';
+
+                    empty.textContent =
+                        'empty';
+
+                    valuesWrap
+                        .appendChild(
+                            empty
+                        );
 
                 } else {
                     bucket.forEach(
-                        value => {
+                        (
+                            value,
+                            valueIndex
+                        ) => {
                             const chip =
-                                document.createElement(
-                                    'span'
-                                );
+                                document
+                                    .createElement(
+                                        'span'
+                                    );
 
                             chip.className =
                                 'bucket-chip';
@@ -1414,22 +2082,40 @@ function renderBucketVisualization(
                             chip.textContent =
                                 value;
 
-                            valuesWrap.appendChild(
+                            if (
+                                index ===
+                                    activeBucket &&
+                                valueIndex ===
+                                    bucket.length - 1
+                            ) {
                                 chip
-                            );
+                                    .classList
+                                    .add(
+                                        'active'
+                                    );
+                            }
+
+                            valuesWrap
+                                .appendChild(
+                                    chip
+                                );
                         }
                     );
                 }
 
-                bucketEl.appendChild(
-                    valuesWrap
-                );
 
-                bucketGrid.appendChild(
-                    bucketEl
-                );
+                bucketElement
+                    .appendChild(
+                        valuesWrap
+                    );
+
+                bucketGrid
+                    .appendChild(
+                        bucketElement
+                    );
             }
         );
+
 
         detail.appendChild(
             bucketGrid
@@ -1445,16 +2131,18 @@ function renderBucketVisualization(
             'source-context';
 
         note.textContent =
-            'A safe bucket-layout reference could not be inferred from this Java source; showing the actual array trace only.';
+            'The bucket count could not be inferred safely, so only the actual array trace is shown.';
 
         detail.appendChild(
             note
         );
     }
 
+
     visualArea.appendChild(
         detail
     );
+
 
     const bars =
         document.createElement(
@@ -1468,6 +2156,7 @@ function renderBucketVisualization(
         bars
     );
 
+
     buildBars(
         bars,
         values,
@@ -1475,10 +2164,532 @@ function renderBucketVisualization(
         210
     );
 }
+/* ============================================================
+ * Heap Sort visualization
+ * ============================================================ */
 
+function getCurrentHeapSize(
+    values,
+    step
+) {
+    if (
+        !values ||
+        values.length === 0
+    ) {
+        return 0;
+    }
+
+    if (
+        step &&
+        step.type ===
+            'complete'
+    ) {
+        return 0;
+    }
+
+    let heapSize =
+        values.length;
+
+    const end =
+        Math.min(
+            currentStepIndex,
+            executionSteps.length - 1
+        );
+
+    for (
+        let index = 0;
+        index <= end;
+        index++
+    ) {
+        const traceStep =
+            executionSteps[index];
+
+        if (
+            traceStep &&
+            traceStep.type ===
+                'heap-boundary' &&
+            traceStep.data &&
+            Number.isInteger(
+                traceStep.data.heapSize
+            )
+        ) {
+            heapSize =
+                traceStep.data
+                    .heapSize;
+        }
+    }
+
+    return Math.max(
+        0,
+        Math.min(
+            heapSize,
+            values.length
+        )
+    );
+}
+
+
+function renderHeapVisualization(
+    values,
+    step
+) {
+    const visualArea =
+        $('visualizationArea');
+
+    visualArea.innerHTML =
+        '';
+
+    if (
+        !values ||
+        values.length === 0
+    ) {
+        return;
+    }
+
+    const heapSize =
+        getCurrentHeapSize(
+            values,
+            step
+        );
+
+    const changed =
+        new Set(
+            step &&
+            step.data &&
+            Array.isArray(
+                step.data.indices
+            )
+                ? step.data.indices
+                : []
+        );
+
+    let phase =
+        'Array represented as a binary tree';
+
+    if (
+        step &&
+        step.type ===
+            'complete'
+    ) {
+        phase =
+            'Heap Sort complete';
+
+    } else if (
+        heapSize <
+        values.length
+    ) {
+        phase =
+            'Extracting maximum / restoring heap';
+
+    } else if (
+        step &&
+        (
+            step.type ===
+                'heap-boundary' ||
+            step.type ===
+                'method-entry'
+        )
+    ) {
+        phase =
+            'Building max heap';
+    }
+
+    const detail =
+        document.createElement(
+            'div'
+        );
+
+    detail.className =
+        'algorithm-detail heap-detail';
+
+    detail.innerHTML =
+        `
+        <div class="algorithm-detail-title">
+            Heap Sort — Tree View
+        </div>
+
+        <div class="algorithm-detail-grid">
+            <div>
+                <span>Phase</span>
+                <strong>
+                    ${escapeHtml(phase)}
+                </strong>
+            </div>
+
+            <div>
+                <span>Active Heap</span>
+                <strong>
+                    ${heapSize}
+                    ${
+                        heapSize === 1
+                            ? 'element'
+                            : 'elements'
+                    }
+                </strong>
+            </div>
+        </div>
+
+        <div class="algorithm-detail-note">
+            The tree keeps the same array-index structure
+            throughout Heap Sort. Values update in place as
+            the Java array changes. Nodes outside the active
+            heap are already in their final sorted positions.
+        </div>
+        `;
+
+    visualArea.appendChild(
+        detail
+    );
+
+    const treeSection =
+        document.createElement(
+            'div'
+        );
+
+    treeSection.className =
+        'heap-section';
+
+    const treeTitle =
+        document.createElement(
+            'div'
+        );
+
+    treeTitle.className =
+        'heap-section-title';
+
+    treeTitle.textContent =
+        step &&
+        step.type ===
+            'complete'
+            ? 'Final Sorted Tree'
+            : 'Heap / Sorted Tree';
+
+    treeSection.appendChild(
+        treeTitle
+    );
+
+    const limit =
+        Math.min(
+            values.length,
+            31
+        );
+
+    const shownValues =
+        values.slice(
+            0,
+            limit
+        );
+
+    const levelCount =
+        Math.floor(
+            Math.log2(
+                shownValues.length
+            )
+        ) + 1;
+
+    const tree =
+        document.createElement(
+            'div'
+        );
+
+    tree.className =
+        'heap-level-tree';
+
+    const canvas =
+        document.createElement(
+            'div'
+        );
+
+    canvas.className =
+        'heap-tree-canvas';
+
+    canvas.style.height =
+        `${Math.max(
+            210,
+            58 +
+            levelCount * 76
+        )}px`;
+
+    const positions = [];
+
+    shownValues.forEach(
+        (
+            value,
+            index
+        ) => {
+            const level =
+                Math.floor(
+                    Math.log2(
+                        index + 1
+                    )
+                );
+
+            const firstIndex =
+                Math.pow(
+                    2,
+                    level
+                ) - 1;
+
+            const positionInLevel =
+                index -
+                firstIndex;
+
+            const nodesInLevel =
+                Math.pow(
+                    2,
+                    level
+                );
+
+            const x =
+                (
+                    (
+                        positionInLevel +
+                        0.5
+                    ) /
+                    nodesInLevel
+                ) * 100;
+
+            const y =
+                levelCount === 1
+                    ? 50
+                    : 13 +
+                      level *
+                      (
+                          74 /
+                          Math.max(
+                              1,
+                              levelCount - 1
+                          )
+                      );
+
+            positions.push(
+                {
+                    index,
+                    value,
+                    x,
+                    y
+                }
+            );
+        }
+    );
+
+    const svg =
+        document.createElementNS(
+            'http://www.w3.org/2000/svg',
+            'svg'
+        );
+
+    svg.classList.add(
+        'heap-tree-svg'
+    );
+
+    svg.setAttribute(
+        'viewBox',
+        '0 0 100 100'
+    );
+
+    svg.setAttribute(
+        'preserveAspectRatio',
+        'none'
+    );
+
+    positions.forEach(
+        position => {
+            if (
+                position.index === 0
+            ) {
+                return;
+            }
+
+            const parentIndex =
+                Math.floor(
+                    (
+                        position.index -
+                        1
+                    ) / 2
+                );
+
+            const parent =
+                positions[
+                    parentIndex
+                ];
+
+            if (!parent) {
+                return;
+            }
+
+            const line =
+                document.createElementNS(
+                    'http://www.w3.org/2000/svg',
+                    'line'
+                );
+
+            line.setAttribute(
+                'x1',
+                parent.x
+            );
+
+            line.setAttribute(
+                'y1',
+                parent.y
+            );
+
+            line.setAttribute(
+                'x2',
+                position.x
+            );
+
+            line.setAttribute(
+                'y2',
+                position.y
+            );
+
+            line.classList.add(
+                'heap-tree-line'
+            );
+
+            if (
+                position.index >=
+                heapSize
+            ) {
+                line.classList.add(
+                    'sorted'
+                );
+            }
+
+            svg.appendChild(
+                line
+            );
+        }
+    );
+
+    canvas.appendChild(
+        svg
+    );
+
+    positions.forEach(
+        position => {
+            const node =
+                document.createElement(
+                    'div'
+                );
+
+            node.className =
+                'heap-node';
+
+            node.style.left =
+                `${position.x}%`;
+
+            node.style.top =
+                `${position.y}%`;
+
+            node.innerHTML =
+                `
+                <span class="heap-node-value">
+                    ${position.value}
+                </span>
+
+                <span class="heap-node-index">
+                    [${position.index}]
+                </span>
+                `;
+
+            const isSorted =
+                (
+                    step &&
+                    step.type ===
+                        'complete'
+                ) ||
+                position.index >=
+                    heapSize;
+
+            if (isSorted) {
+                node.classList.add(
+                    'sorted'
+                );
+
+            } else if (
+                changed.has(
+                    position.index
+                )
+            ) {
+                if (
+                    step &&
+                    step.type ===
+                        'condition'
+                ) {
+                    node.classList.add(
+                        'comparing'
+                    );
+
+                } else if (
+                    step &&
+                    step.type ===
+                        'swap'
+                ) {
+                    node.classList.add(
+                        'swapping'
+                    );
+
+                } else if (
+                    step &&
+                    step.type ===
+                        'write'
+                ) {
+                    node.classList.add(
+                        'writing'
+                    );
+                }
+            }
+
+            canvas.appendChild(
+                node
+            );
+        }
+    );
+
+    tree.appendChild(
+        canvas
+    );
+
+    if (
+        values.length >
+        limit
+    ) {
+        const note =
+            document.createElement(
+                'div'
+            );
+
+        note.className =
+            'heap-tree-limit';
+
+        note.textContent =
+            `Tree view limited to the first ${limit} array elements.`;
+
+        tree.appendChild(
+            note
+        );
+    }
+
+    treeSection.appendChild(
+        tree
+    );
+
+    visualArea.appendChild(
+        treeSection
+    );
+}
+
+
+/* ============================================================
+ * Execution statistics
+ * ============================================================ */
 
 function updateStatus() {
-    if (!executionSteps.length) {
+    if (
+        !executionSteps.length
+    ) {
         $('currentAction')
             .textContent = '-';
 
@@ -1531,7 +2742,9 @@ function updateStatus() {
 }
 
 
-function describeStep(step) {
+function describeStep(
+    step
+) {
     if (!step) {
         return '-';
     }
@@ -1544,7 +2757,9 @@ function describeStep(step) {
             ? step.data.indices
             : [];
 
-    switch (step.type) {
+    switch (
+        step.type
+    ) {
         case 'condition':
             return indices.length
                 ? `Comparing index ${indices.join(' and ')}`
@@ -1556,7 +2771,10 @@ function describeStep(step) {
                 : 'Writing / shifting';
 
         case 'swap':
-            return indices.length === 2
+            return (
+                indices.length ===
+                2
+            )
                 ? `Swapping index ${indices[0]} ↔ ${indices[1]}`
                 : 'Swapping';
 
@@ -1572,19 +2790,53 @@ function describeStep(step) {
         case 'statement':
             return 'Executing statement';
 
+        case 'bucket-write':
+            if (
+                step.data &&
+                Number.isInteger(
+                    step.data.bucketIndex
+                )
+            ) {
+                return (
+                    `Placing ${step.data.value} ` +
+                    `into bucket ${step.data.bucketIndex}`
+                );
+            }
+
+            return 'Placing value into bucket';
+
+        case 'heap-boundary':
+            if (
+                step.data &&
+                Number.isInteger(
+                    step.data.heapSize
+                )
+            ) {
+                return (
+                    `Active heap size: ` +
+                    `${step.data.heapSize}`
+                );
+            }
+
+            return 'Updating active heap';
+
         default:
             return 'Executing';
     }
 }
-
+/* ============================================================
+ * Step controls
+ * ============================================================ */
 
 function stepForward() {
     if (
         currentStepIndex <
-        executionSteps.length - 1
+        executionSteps.length -
+            1
     ) {
         visualizeStep(
-            currentStepIndex + 1
+            currentStepIndex +
+                1
         );
     }
 }
@@ -1595,9 +2847,30 @@ function stepBackward() {
         currentStepIndex > 0
     ) {
         visualizeStep(
-            currentStepIndex - 1
+            currentStepIndex -
+                1
         );
     }
+}
+
+
+/* ============================================================
+ * Playback
+ * ============================================================ */
+
+function getPlayButton() {
+    return [
+        ...document
+            .querySelectorAll(
+                'button'
+            )
+    ].find(
+        button =>
+            button.getAttribute(
+                'onclick'
+            ) ===
+            'pauseResume()'
+    );
 }
 
 
@@ -1613,18 +2886,7 @@ function stopPlayback() {
     playInterval = null;
 
     const button =
-        [
-            ...document
-                .querySelectorAll(
-                    'button'
-                )
-        ].find(
-            b =>
-                b.getAttribute(
-                    'onclick'
-                ) ===
-                'pauseResume()'
-        );
+        getPlayButton();
 
     if (button) {
         button.textContent =
@@ -1635,18 +2897,7 @@ function stopPlayback() {
 
 function pauseResume() {
     const button =
-        [
-            ...document
-                .querySelectorAll(
-                    'button'
-                )
-        ].find(
-            b =>
-                b.getAttribute(
-                    'onclick'
-                ) ===
-                'pauseResume()'
-        );
+        getPlayButton();
 
     if (
         !executionSteps.length
@@ -1657,6 +2908,15 @@ function pauseResume() {
     if (isPlaying) {
         stopPlayback();
         return;
+    }
+
+    if (
+        currentStepIndex >=
+        executionSteps.length - 1
+    ) {
+        currentStepIndex = 0;
+
+        visualizeStep(0);
     }
 
     isPlaying = true;
@@ -1671,17 +2931,24 @@ function pauseResume() {
             () => {
                 if (
                     currentStepIndex <
-                    executionSteps.length - 1
+                    executionSteps.length -
+                        1
                 ) {
                     stepForward();
+
                 } else {
                     stopPlayback();
                 }
             },
+
             animationSpeed
         );
 }
 
+
+/* ============================================================
+ * Reset
+ * ============================================================ */
 
 function resetVisualization() {
     stopPlayback();
@@ -1689,21 +2956,44 @@ function resetVisualization() {
     currentStepIndex = 0;
     executionSteps = [];
 
-    $('visualizationArea')
-        .innerHTML = '';
+    selectedAlgorithm = null;
+    originalInputArray = [];
 
-    $('codeDisplay')
-        .innerHTML = '';
+    const visualArea =
+        $('visualizationArea');
+
+    if (visualArea) {
+        visualArea.innerHTML =
+            '';
+    }
+
+    const codeDisplay =
+        $('codeDisplay');
+
+    if (codeDisplay) {
+        codeDisplay.innerHTML =
+            '';
+    }
 
     updateStatus();
 
-    $('timeComplexity')
-        .textContent = '-';
+    if (
+        $('timeComplexity')
+    ) {
+        $('timeComplexity')
+            .textContent = '-';
+    }
 
-    $('spaceComplexity')
-        .textContent = '-';
+    if (
+        $('spaceComplexity')
+    ) {
+        $('spaceComplexity')
+            .textContent = '-';
+    }
 
-    if ($('executionMessage')) {
+    if (
+        $('executionMessage')
+    ) {
         setResult(
             'Ready.',
             '-',
@@ -1716,7 +3006,188 @@ function resetVisualization() {
 }
 
 
-function analyzeComplexity(code) {
+/* ============================================================
+ * Automatic visualization-mode detection
+ * ============================================================ */
+
+function detectAlgorithmFromCode(
+    code
+) {
+    const source =
+        String(
+            code || ''
+        );
+
+    const normalized =
+        source.toLowerCase();
+
+    if (
+        /\bheapsort\b/i
+            .test(source) ||
+        /\bheap\s*sort\b/i
+            .test(source) ||
+        /\bheapify\b/i
+            .test(source) ||
+        /\bsiftdown\b/i
+            .test(source) ||
+        /\bsift_down\b/i
+            .test(source) ||
+        /\bsiftDown\b/
+            .test(source)
+    ) {
+        return 'heap';
+    }
+
+    if (
+        /\bcountingsort\b/i
+            .test(source) ||
+        /\bcounting\s*sort\b/i
+            .test(source) ||
+        (
+            /\bcounts?\s*\[/
+                .test(
+                    normalized
+                ) &&
+            /new\s+int\s*\[/
+                .test(
+                    normalized
+                )
+        )
+    ) {
+        return 'counting';
+    }
+
+    if (
+        /\bbucketsort\b/i
+            .test(source) ||
+        /\bbucket\s*sort\b/i
+            .test(source) ||
+        /\bbucketcount\b/i
+            .test(source) ||
+        /\bbuckets\b/i
+            .test(source)
+    ) {
+        return 'bucket';
+    }
+
+    if (
+        /\bquicksort\b/i
+            .test(source) ||
+        /\bquick\s*sort\b/i
+            .test(source) ||
+        /\bpartition\s*\(/
+            .test(source) ||
+        /\bpivot\b/i
+            .test(source)
+    ) {
+        return 'quick';
+    }
+
+    if (
+        /\bmergesort\b/i
+            .test(source) ||
+        /\bmerge\s*sort\b/i
+            .test(source) ||
+        (
+            /\bmerge\s*\(/
+                .test(source) &&
+            /\bmid\b/i
+                .test(source)
+        )
+    ) {
+        return 'merge';
+    }
+
+    if (
+        /\binsertionsort\b/i
+            .test(source) ||
+        /\binsertion\s*sort\b/i
+            .test(source) ||
+        (
+            /\bkey\b/i
+                .test(source) &&
+            /\bj\s*--/
+                .test(source)
+        )
+    ) {
+        return 'insertion';
+    }
+
+    if (
+        /\bselectionsort\b/i
+            .test(source) ||
+        /\bselection\s*sort\b/i
+            .test(source) ||
+        /\bminindex\b/i
+            .test(source) ||
+        /\bmin_idx\b/i
+            .test(source) ||
+        /\bminIndex\b/
+            .test(source)
+    ) {
+        return 'selection';
+    }
+
+    if (
+        /\bbubblesort\b/i
+            .test(source) ||
+        /\bbubble\s*sort\b/i
+            .test(source) ||
+        (
+            /\bswapped\b/i
+                .test(source) &&
+            /\[\s*\w+\s*\+\s*1\s*\]/
+                .test(source)
+        )
+    ) {
+        return 'bubble';
+    }
+
+    return null;
+}
+
+
+function formatAlgorithmName(
+    algorithm
+) {
+    const names = {
+        bubble:
+            'Bubble Sort',
+
+        selection:
+            'Selection Sort',
+
+        insertion:
+            'Insertion Sort',
+
+        merge:
+            'Merge Sort',
+
+        quick:
+            'Quick Sort',
+
+        heap:
+            'Heap Sort',
+
+        counting:
+            'Counting Sort',
+
+        bucket:
+            'Bucket Sort'
+    };
+
+    return (
+        names[algorithm] ||
+        'Generic array trace'
+    );
+}
+/* ============================================================
+ * Complexity estimation
+ * ============================================================ */
+
+function analyzeComplexity(
+    code
+) {
     let time =
         'Unknown';
 
@@ -1727,6 +3198,7 @@ function analyzeComplexity(code) {
         bubble: {
             time:
                 'O(n²)',
+
             space:
                 'O(1)'
         },
@@ -1734,6 +3206,7 @@ function analyzeComplexity(code) {
         selection: {
             time:
                 'O(n²)',
+
             space:
                 'O(1)'
         },
@@ -1741,6 +3214,7 @@ function analyzeComplexity(code) {
         insertion: {
             time:
                 'O(n²)',
+
             space:
                 'O(1)'
         },
@@ -1748,6 +3222,7 @@ function analyzeComplexity(code) {
         merge: {
             time:
                 'O(n log n)',
+
             space:
                 'O(n)'
         },
@@ -1755,13 +3230,23 @@ function analyzeComplexity(code) {
         quick: {
             time:
                 'O(n log n) average',
+
             space:
                 'O(log n) average'
+        },
+
+        heap: {
+            time:
+                'O(n log n)',
+
+            space:
+                'O(1)'
         },
 
         counting: {
             time:
                 'O(n + k)',
+
             space:
                 'O(k)'
         },
@@ -1769,6 +3254,7 @@ function analyzeComplexity(code) {
         bucket: {
             time:
                 'O(n + k) average',
+
             space:
                 'O(n + k)'
         }
@@ -1797,12 +3283,10 @@ function analyzeComplexity(code) {
             );
 
         const hasAux =
-            /new\s+(?:int|Integer|Object)\s*\[/.test(
-                code
-            ) ||
-            /new\s+ArrayList/.test(
-                code
-            );
+            /new\s+(?:int|Integer|Object)\s*\[/
+                .test(code) ||
+            /new\s+ArrayList/
+                .test(code);
 
         const maxDepth =
             approximateLoopDepth(
@@ -1811,9 +3295,8 @@ function analyzeComplexity(code) {
 
         if (
             hasRecursion &&
-            /\bpivot\b/.test(
-                code
-            )
+            /\bpivot\b/i
+                .test(code)
         ) {
             time =
                 'O(n log n) average';
@@ -1825,9 +3308,8 @@ function analyzeComplexity(code) {
 
         } else if (
             hasRecursion &&
-            /(mid|\/\s*2|>>>\s*1)/.test(
-                code
-            )
+            /(mid|\/\s*2|>>>\s*1)/
+                .test(code)
         ) {
             time =
                 'O(n log n)';
@@ -1902,34 +3384,75 @@ function analyzeComplexity(code) {
 }
 
 
-function detectRecursion(code) {
+/* ============================================================
+ * Basic recursion detection
+ * ============================================================ */
+
+function detectRecursion(
+    code
+) {
+    const methodPattern =
+        /(?:public\s+|private\s+|protected\s+)?(?:static\s+)?(?:void|int|long|double|float|boolean|int\s*\[\]|ArrayList\s*<[^>]+>)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*\([^)]*\)\s*\{/g;
+
     const methods =
         [
             ...code.matchAll(
-                /(?:void|int\s*\[\s*\]|ArrayList\s*<[^>]+>)\s+(\w+)\s*\([^)]*\)\s*\{/g
+                methodPattern
             )
         ].map(
-            m => m[1]
+            match =>
+                match[1]
         );
 
     return methods.some(
-        name =>
-            new RegExp(
-                `\\b${name}\\s*\\(`,
-                'g'
-            ).test(
+        name => {
+            const declarationPattern =
+                new RegExp(
+                    `(?:public\\s+|private\\s+|protected\\s+)?(?:static\\s+)?(?:void|int|long|double|float|boolean|int\\s*\\[\\]|ArrayList\\s*<[^>]+>)\\s+${escapeRegExp(
+                        name
+                    )}\\s*\\([^)]*\\)\\s*\\{`
+                );
+
+            const withoutDeclaration =
                 code.replace(
-                    new RegExp(
-                        `(?:void|int\\s*\\[\\s*\\]|ArrayList\\s*<[^>]+>)\\s+${name}\\s*\\([^)]*\\)`
-                    ),
+                    declarationPattern,
                     ''
-                )
-            )
+                );
+
+            const callPattern =
+                new RegExp(
+                    `\\b${escapeRegExp(
+                        name
+                    )}\\s*\\(`
+                );
+
+            return callPattern
+                .test(
+                    withoutDeclaration
+                );
+        }
     );
 }
 
 
-function approximateLoopDepth(code) {
+function escapeRegExp(
+    value
+) {
+    return String(value)
+        .replace(
+            /[.*+?^${}()|[\]\\]/g,
+            '\\$&'
+        );
+}
+
+
+/* ============================================================
+ * Approximate nested-loop depth
+ * ============================================================ */
+
+function approximateLoopDepth(
+    code
+) {
     let depth = 0;
     let max = 0;
 
@@ -1948,14 +3471,14 @@ function approximateLoopDepth(code) {
             token.includes('{')
         ) {
             const before =
-                token.split(
-                    '{'
-                )[0];
+                token
+                    .split('{')[0];
 
             const isLoop =
-                /\b(for|while)\s*\(/.test(
-                    before
-                );
+                /\b(for|while)\s*\(/
+                    .test(
+                        before
+                    );
 
             stack.push(
                 isLoop
@@ -1987,11 +3510,7 @@ function approximateLoopDepth(code) {
         }
     }
 
-    /*
-     * Fallback for formatting where
-     * tokenization loses header association.
-     */
-    if (max === 0) {
+    if (max === 0) {    
         const loops =
             (
                 code.match(
@@ -2007,78 +3526,4 @@ function approximateLoopDepth(code) {
     }
 
     return max;
-}
-
-
-function selectAlgorithm(type) {
-    selectedAlgorithm = type;
-
-    document
-        .querySelectorAll(
-            '.example-btn'
-        )
-        .forEach(
-            btn =>
-                btn.classList.remove(
-                    'active'
-                )
-        );
-
-    if (
-        window.event &&
-        window.event.target
-    ) {
-        window.event.target
-            .classList.add(
-                'active'
-            );
-    }
-
-    const names = {
-        bubble:
-            'Bubble Sort',
-
-        selection:
-            'Selection Sort',
-
-        insertion:
-            'Insertion Sort',
-
-        merge:
-            'Merge Sort',
-
-        quick:
-            'Quick Sort',
-
-        bucket:
-            'Bucket Sort',
-
-        counting:
-            'Counting Sort'
-    };
-
-    showInfo(
-        `${names[type]} selected as a visualization/analysis mode. ` +
-        `Execution still uses the Java code you pasted; ` +
-        `the site never substitutes a built-in sorting implementation.`
-    );
-
-    const code =
-        $('javaCode').value;
-
-    if (
-        code.trim()
-    ) {
-        analyzeComplexity(
-            code
-        );
-    }
-
-    if (
-        executionSteps.length
-    ) {
-        visualizeStep(
-            currentStepIndex
-        );
-    }
 }

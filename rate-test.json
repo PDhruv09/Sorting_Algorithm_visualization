@@ -1,0 +1,5 @@
+{
+  "code": "public static void sort(int[] arr) { }",
+  "inputArray": [3, 2, 1],
+  "methodName": "sort"
+}
