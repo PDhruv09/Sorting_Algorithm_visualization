@@ -264,6 +264,38 @@ header {
 
 
 
+.mode-navigation {
+    display: flex;
+    justify-content: flex-end;
+    width: 100%;
+    margin-bottom: 18px;
+}
+
+.mode-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 10px 18px;
+    border: 1px solid #a78bfa;
+    background: #7c3aed;
+    color: #fff;
+    box-shadow: 0 5px 20px rgba(124, 58, 237, 0.3);
+    border-radius: var(--radius-small);
+    font-weight: 700;
+    text-decoration: none;
+    transition: background-color 0.15s ease;
+}
+
+.mode-button:focus-visible {
+    outline: 3px solid var(--text);
+    outline-offset: 4px;
+}
+
+.mode-button:hover {
+    background: #6d28d9;
+}
+
 header h1 {
 
     margin: 0;

@@ -9,10 +9,13 @@ services:
     container_name: sorting-visualizer
 
     ports:
-      - "8000:8000"
+      - "127.0.0.1:${HOST_PORT:-8000}:8000"
 
     environment:
       APP_ENV: production
+      CHALLENGE_MODE_ENABLED: "1"
+      CHALLENGE_DB_PATH: /var/lib/sortviz/challenge.sqlite3
+      CHALLENGE_LOCAL_HTTP: "1"
 
       MAX_SOURCE_CHARS: 50000
       MAX_ARRAY_LENGTH: 500
@@ -28,6 +31,9 @@ services:
 
     # Prevent writes to the application filesystem.
     read_only: true
+
+    volumes:
+      - challenge-data:/var/lib/sortviz
 
     # Java compilation and temporary files still need writable space.
     tmpfs:
@@ -49,3 +55,6 @@ services:
     cpus: 1.0
 
     restart: unless-stopped
+
+volumes:
+  challenge-data:

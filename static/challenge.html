@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Challenge Mode · Sorting Visualizer</title>
+    <link rel="stylesheet" href="/static/challenge.css?v=choices-3">
+    <script src="/static/challenge.js?v=choices-3" defer></script>
+</head>
+<body>
+    <main>
+        <header class="topbar">
+            <a href="/" class="brand">SORT / LAB</a>
+            <span class="badge">Challenge Mode</span>
+            <a href="/">Back to visualizer</a>
+        </header>
+        <section class="intro">
+            <p id="intro-eyebrow" class="eyebrow">OBSERVE. IDENTIFY. EXPLAIN.</p>
+            <h1 id="intro-title">Read the movements.</h1>
+            <p id="intro-subtitle" class="lede">Watch the array, recognize the pattern, and tell us how you know.</p>
+        </section>
+        <p id="notice" class="notice" role="status" aria-live="polite"></p>
+        <p id="error" class="error" role="alert" hidden></p>
+        <section id="access" class="card access-card">
+            <div>
+                <p class="eyebrow">YOUR CHALLENGE</p>
+                <h2>15 animations. One challenge.</h2>
+                <p>Identify the algorithm and choose the reason that best explains each animation. Your answers save when you select Next. Your total score appears after final submission.</p>
+                <p class="muted">Returning? Enter the same email to resume your saved progress or view your score. Detailed feedback becomes available when course staff release it after the PA.</p>
+            </div>
+            <form id="access-form">
+                <label for="email">UCSD email</label>
+                <input id="email" name="email" type="email" autocomplete="email" placeholder="you@ucsd.edu" maxlength="254" required>
+                <button id="start" type="submit" disabled>Start / resume challenge <span aria-hidden="true">→</span></button>
+                <p class="small muted">Use the email provided to your course staff.</p>
+            </form>
+        </section>
+        <section id="challenge" hidden>
+            <div class="progress-heading">
+                <h2 id="question-number" tabindex="-1"></h2>
+                <span id="saved-count"></span>
+            </div>
+            <progress id="progress" value="0" max="15" aria-label="Saved answers"></progress>
+            <div class="workspace">
+                <section class="card animation-card" aria-labelledby="animation-title">
+                    <div class="section-heading"><h3 id="animation-title">Watch the animation</h3><span class="badge">Algorithm hidden</span></div>
+                    <p class="muted">Only the main array is shown. Auxiliary structures and code are hidden.</p>
+                    <div id="bars" class="bars" role="img" aria-label="Array visualization"></div>
+                    <div class="frame-info"><span id="action"></span><span id="frame-count"></span></div>
+                    <div class="playback">
+                        <button id="play" type="button">Play</button>
+                        <button id="step" class="secondary" type="button">Step</button>
+                        <button id="replay" class="secondary" type="button">Replay</button>
+                        <label for="speed">Speed <select id="speed"><option value="900">Slow</option><option value="450" selected>Normal</option><option value="180">Fast</option></select></label>
+                    </div>
+                    <p class="legend"><span class="dot compare"></span> Compare <span class="dot write"></span> Write / swap <span class="dot read"></span> Read</p>
+                    <details><summary>View current array as text</summary><p id="array-text" class="array-text"></p></details>
+                </section>
+                <section class="card answer-card">
+                    <form id="answer-form">
+                        <p class="eyebrow">YOUR OBSERVATIONS</p>
+                        <h3>Which algorithm is this?</h3>
+                        <label for="identification">Sorting algorithm</label>
+                        <select id="identification" required><option value="">Choose an algorithm</option></select>
+                        <fieldset id="reasoning-choices" hidden><legend>What led you to that answer? Choose one reason.</legend><div id="reasoning-options"></div></fieldset>
+                        <label id="reasoning-label" for="reasoning">What led you to that answer?</label>
+                        <textarea id="reasoning" rows="7" maxlength="4000" required placeholder="Describe the comparisons, movements, or repeated patterns you noticed."></textarea>
+                        <div class="field-help"><span id="reasoning-help">Choose the pattern you observed.</span><span id="character-count">0 / 4000</span></div>
+                        <p id="save-status" class="small muted">Not saved yet.</p>
+                        <div class="answer-actions">
+                            <button id="previous" type="button" class="secondary">Previous</button>
+                            <button id="next" type="submit">Save & next →</button>
+                        </div>
+                    </form>
+                </section>
+            </div>
+        </section>
+        <section id="results" hidden aria-labelledby="results-title">
+            <div class="card result-summary">
+                <p class="eyebrow">CHALLENGE COMPLETE</p>
+                <h2 id="results-title" tabindex="-1">Your response has been stored.</h2>
+                <p id="score" class="score"></p>
+                <p id="feedback-status" class="muted">Detailed feedback will be available after course staff release it.</p>
+            </div>
+            <div id="feedback" hidden></div>
+        </section>
+        <footer><span id="student"></span><button id="signout" class="text-button" hidden>Leave challenge</button></footer>
+        <noscript><p class="error">Enable JavaScript to use the animation and save your answers.</p></noscript>
+    </main>
+</body>
+</html>
