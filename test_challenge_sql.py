@@ -54,6 +54,39 @@ class AzureStoreTests(unittest.TestCase):
         with patch.dict(os.environ, {"CHALLENGE_DB_BACKEND": "typo"}), self.assertRaises(ValueError):
             create_store()
 
+    def test_identifier_surrounding_whitespace_is_normalized(self):
+        expected = connection_string()
+        values = {name: " \t" + value + "\r\n" for name, value in CONFIG.items() if name.startswith("CHALLENGE_SQL_")}
+        with patch.dict(os.environ, values), self.assertLogs("challenge_sql", level="WARNING") as logs:
+            self.assertEqual(expected, connection_string())
+        for value in CONFIG.values():
+            self.assertNotIn(value, " ".join(logs.output))
+
+    def test_missing_empty_and_misspelled_settings_fail_without_fallback(self):
+        with patch.dict(os.environ, {}, clear=True), self.assertRaisesRegex(ValueError, "CHALLENGE_SQL_SERVER is missing"):
+            connection_string()
+        with patch.dict(os.environ, {"CHALLENGE_SQL_DATABASE": " \r\n"}), self.assertRaisesRegex(ValueError, "CHALLENGE_SQL_DATABASE is empty"):
+            connection_string()
+        config = dict(CONFIG)
+        config["CHALLENGE_SQL_DATABASE "] = config.pop("CHALLENGE_SQL_DATABASE")
+        with patch.dict(os.environ, config, clear=True), self.assertRaisesRegex(ValueError, "CHALLENGE_SQL_DATABASE is missing"):
+            connection_string()
+
+    def test_invalid_values_are_rejected_with_private_shape_diagnostics(self):
+        cases = [
+            ("CHALLENGE_SQL_DATABASE", "private\nname", "contains_whitespace=True"),
+            ("CHALLENGE_SQL_DATABASE", "private\u200bname", "contains_non_ascii=True"),
+            ("CHALLENGE_SQL_DATABASE", "x" * 129, "length=129"),
+            ("CHALLENGE_SQL_DATABASE", " private;UID=admin \n", "Value withheld"),
+            ("CHALLENGE_SQL_CLIENT_ID", "private-invalid-uuid", "client UUID"),
+        ]
+        for name, value, diagnostic in cases:
+            with self.subTest(name=name, value=value), patch.dict(os.environ, {name: value}):
+                with self.assertRaises(ValueError) as caught:
+                    connection_string()
+                self.assertIn(diagnostic, str(caught.exception))
+                self.assertNotIn(value.strip(), str(caught.exception))
+
     def test_commit_close_and_bound_parameters(self):
         payload = "'); DROP TABLE students; --"
         with self.store.connection() as database:
