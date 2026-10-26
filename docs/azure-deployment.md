@@ -60,6 +60,7 @@ For Azure, configure these environment variables on the new revision:
 | Variable | Value |
 | --- | --- |
 | `APP_ENV` | `production` |
+| `CHALLENGE_PUBLIC_ORIGIN` | `https://sorting-visualizer.graycliff-f74894db.canadacentral.azurecontainerapps.io` (no trailing slash) |
 | `CHALLENGE_MODE_ENABLED` | `1` |
 | `CHALLENGE_DB_BACKEND` | `azure_sql` |
 | `CHALLENGE_SQL_SERVER` | `sorting-visualizer-sql-dhp005.database.windows.net` |

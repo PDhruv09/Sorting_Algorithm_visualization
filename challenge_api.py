@@ -7,6 +7,7 @@ from collections import deque
 from pathlib import Path
 from threading import Lock
 from typing import Literal
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse
@@ -54,6 +55,13 @@ class SubmitRequest(BaseModel):
 class ChallengeProtection:
     def __init__(self, app):
         self.app = app
+        self.public_origin = os.getenv("CHALLENGE_PUBLIC_ORIGIN", "").strip()
+        if self.public_origin:
+            parsed = urlsplit(self.public_origin)
+            if (parsed.scheme != "https" or not parsed.hostname or parsed.username
+                    or parsed.password or parsed.path or parsed.query or parsed.fragment
+                    or any(c.isspace() for c in self.public_origin)):
+                raise ValueError("CHALLENGE_PUBLIC_ORIGIN must be an HTTPS origin without a path")
         self.requests = {}
         self.lock = Lock()
 
@@ -79,7 +87,9 @@ class ChallengeProtection:
             if headers.get("x-challenge-request") != "1" or headers.get("sec-fetch-site") == "cross-site":
                 return await reject(403, "Open Challenge Mode on this site and try again.")
             origin = headers.get("origin")
-            expected_origin = f"{scope['scheme']}://{headers.get('host', '')}"
+            # A configured public origin handles TLS termination without trusting
+            # client-supplied forwarding headers or weakening the origin check.
+            expected_origin = self.public_origin or f"{scope['scheme']}://{headers.get('host', '')}"
             if origin and origin != expected_origin:
                 return await reject(403, "Requests must come from this site.")
             if scope["method"] != "DELETE" and headers.get("content-type", "").split(";")[0] != "application/json":

@@ -28,6 +28,31 @@ def make_app(path):
     return app
 
 
+class ProxyOriginTests(unittest.TestCase):
+    def test_public_https_origin_over_internal_http(self):
+        app = FastAPI()
+        app.add_middleware(ChallengeProtection)
+
+        @app.post("/api/challenge/access")
+        def access():
+            return {"accepted": True}
+
+        with patch.dict(os.environ, {"CHALLENGE_PUBLIC_ORIGIN": "https://example.test"}):
+            with TestClient(app, base_url="http://internal") as client:
+                response = client.post("/api/challenge/access", json={}, headers={**HEADERS, "Origin": "https://example.test"})
+                self.assertEqual(200, response.status_code)
+                for origin in ("https://evil.test", "http://example.test", "null"):
+                    response = client.post("/api/challenge/access", json={}, headers={**HEADERS, "Origin": origin, "X-Forwarded-Host": "evil.test", "X-Forwarded-Proto": "https"})
+                    self.assertEqual(403, response.status_code)
+                response = client.post("/api/challenge/access", json={}, headers={**HEADERS, "Origin": "https://example.test", "Sec-Fetch-Site": "cross-site"})
+                self.assertEqual(403, response.status_code)
+
+    def test_invalid_public_origin_is_rejected(self):
+        for origin in ("http://example.test", "https://example.test/path", "https://user:pass@example.test", "https://example.test?x=1"):
+            with patch.dict(os.environ, {"CHALLENGE_PUBLIC_ORIGIN": origin}), self.assertRaises(ValueError):
+                ChallengeProtection(None)
+
+
 class ChallengeTests(unittest.TestCase):
     def setUp(self):
         environment = patch.dict(os.environ, {"CHALLENGE_TEST_VERSION": LEGACY_VERSION, "CHALLENGE_FEEDBACK_RELEASED": "0"})
