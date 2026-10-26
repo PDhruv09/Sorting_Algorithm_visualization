@@ -96,6 +96,7 @@ class AzureStoreTests(unittest.TestCase):
         self.connection.close.assert_called_once()
         self.connection.rollback.assert_not_called()
         self.assertEqual(15, self.connection.timeout)
+        self.assertEqual(60, self.driver.connect.call_args.kwargs["timeout"])
         self.assertFalse(self.driver.connect.call_args.kwargs["autocommit"])
 
     def test_business_rejection_rolls_back_without_masking_http_error(self):
@@ -160,6 +161,20 @@ class AzureStoreTests(unittest.TestCase):
         self.assertIn("WITH (UPDLOCK, HOLDLOCK)", attempt_query)
         self.assertNotIn("LIMIT", attempt_query)
         self.assertFalse(any(sql.startswith("INSERT INTO attempts") for sql in statements))
+
+
+class RealDriverParserTests(unittest.TestCase):
+    def test_generated_string_passes_strict_driver_validation(self):
+        # Run with the pinned Linux driver in the container; no network needed.
+        from mssql_python.connection_string_parser import _ConnectionStringParser
+        from mssql_python.exceptions import ConnectionStringParseError
+        parser = _ConnectionStringParser(validate_keywords=True)
+        with patch.dict(os.environ, CONFIG):
+            value = connection_string()
+        parser._parse(value)
+        # Prove that this real parser catches the previously deployed bug.
+        with self.assertRaises(ConnectionStringParseError):
+            parser._parse(value + "Connection Timeout=15;")
 
 
 if __name__ == "__main__":

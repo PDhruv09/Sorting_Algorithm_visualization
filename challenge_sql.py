@@ -43,7 +43,7 @@ def connection_string():
         raise _invalid_identifier("CHALLENGE_SQL_CLIENT_ID", client_id, "a managed identity client UUID") from None
     return (f"Server=tcp:{server},1433;Database={database};"
             f"Authentication=ActiveDirectoryMsi;UID={client_id};"
-            "Encrypt=yes;TrustServerCertificate=no;Connection Timeout=15;")
+            "Encrypt=yes;TrustServerCertificate=no;")
 
 
 class SQLConnection:
@@ -78,7 +78,9 @@ class AzureChallengeStore(ChallengeStore):
     def connection(self):
         connection = None
         try:
-            connection = self.driver.connect(self.connection_string, autocommit=False, timeout=15)
+            # Login timeout is a driver argument, not a connection-string keyword.
+            # Allow a paused serverless database time to resume.
+            connection = self.driver.connect(self.connection_string, autocommit=False, timeout=60)
             connection.timeout = 15
             database = SQLConnection(connection)
             database.execute("SET XACT_ABORT ON; SET LOCK_TIMEOUT 10000;")

@@ -87,7 +87,10 @@ The ordinary `/health` endpoint deliberately does not query the database: freque
 health checks would keep a serverless database awake. The adapter disables pooling
 and closes each connection after use. A paused database may take time to wake;
 students retain their draft and can retry when a request fails. Writes are not
-automatically replayed after an uncertain commit. Login/query timeouts are 15s,
+automatically replayed after an uncertain commit. Login timeout is 60s to allow
+serverless resume; query timeout is 15s. Login timeout is passed to the driver,
+not included in the connection string. A first connection during resume may
+still need to be retried by the user. Lock timeout is bounded separately:
 lock waits 10s; managed-identity token acquisition has the driver's own timing.
 
 ## Grading, versions, and release
