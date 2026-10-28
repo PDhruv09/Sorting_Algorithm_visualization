@@ -23,6 +23,65 @@ EXPLANATIONS = {
     "bucket": "Values are grouped by value range, each group is sorted, and the groups are collected in order. Only the main array movements are shown; the group containers are deliberately hidden. A hidden-state trace is evidence for an identification, not a proof of a unique implementation.",
 }
 
+# Each question gets a distinct wording for every choice. The same underlying
+# evidence remains correct, while repeated answer text cannot serve as a key.
+REASON_OPENINGS = {
+    "insertion": (
+        "The sorted section extends from the left as each new value is worked into place.",
+        "A value from the unsorted side moves left through larger neighbors.",
+        "The left prefix stays ordered while the next entry finds its position there.",
+        "Larger entries shift right to make room for the value being inserted.",
+        "One more entry joins an already ordered prefix on each pass.",
+    ),
+    "selection": (
+        "A pass searches the remaining entries for the smallest value.",
+        "The unsorted suffix is scanned before its minimum moves to the front.",
+        "Each round chooses the least remaining entry for the next final position.",
+        "The boundary of the sorted prefix advances after a minimum is selected.",
+        "A minimum is located in the unfinished region and exchanged into place.",
+    ),
+    "merge": (
+        "Small adjacent ordered ranges are combined into larger ordered ranges.",
+        "Values from neighboring subranges are written back in sorted order.",
+        "The trace builds sorted sections by joining smaller sections.",
+        "Nearby sorted groups are repeatedly combined into a longer group.",
+        "The array is assembled from ordered pieces of increasing size.",
+    ),
+    "quick": (
+        "A pivot separates a range into values on either side of it.",
+        "Partitioning places a chosen pivot before the remaining ranges are handled.",
+        "A selected value divides the current region into smaller and larger sides.",
+        "The trace rearranges one region around a pivot, then handles subregions.",
+        "A pivot reaches its final location as the surrounding range is partitioned.",
+    ),
+    "counting": (
+        "Input values are tallied before the array is rebuilt in increasing order.",
+        "Occurrences of each value are counted and then used to write the output.",
+        "The trace reads values for frequencies and writes values from those totals.",
+        "A hidden frequency table guides the later writes into sorted order.",
+        "The output is reconstructed from how often each value occurs.",
+    ),
+    "bucket": (
+        "Values are grouped by range, ordered within groups, then gathered in range order.",
+        "The trace fits range-based groups being sorted before they are collected.",
+        "Values are distributed into hidden groups and later written back in group order.",
+        "Each value belongs to a range group that is sorted before collection.",
+        "The array is rebuilt by visiting ordered value-range groups in sequence.",
+    ),
+}
+REASON_ENDINGS = {
+    "insertion": ("The sorted prefix grows by one entry.", "Earlier ordered entries may shift right.", "The next entry is inserted among those already sorted."),
+    "selection": ("The chosen minimum occupies the next position.", "The sorted prefix grows after that exchange.", "The remaining region is searched again on the next pass."),
+    "merge": ("The combined region is written back in order.", "The ordered sections become progressively larger.", "The next combination uses those sorted pieces."),
+    "quick": ("The smaller regions are then processed separately.", "Partitioning fixes the pivot's position.", "The same division repeats on the remaining ranges."),
+    "counting": ("The frequency structure is not shown.", "The writes follow value counts rather than pairwise comparisons.", "Repeated values are emitted according to their counts."),
+    "bucket": ("The group containers are hidden from view.", "The collected groups appear in value-range order.", "The intermediate range groups are not displayed."),
+}
+
+
+def reasoning_text(algorithm, question_index):
+    return f"{REASON_OPENINGS[algorithm][question_index // 3]} {REASON_ENDINGS[algorithm][question_index % 3]}"
+
 
 def make_questions(version=VERSION):
     if version not in (VERSION, LEGACY_VERSION):
@@ -37,10 +96,10 @@ def make_questions(version=VERSION):
                 values[6] = values[2]
             questions.append({"id": f"q{len(questions) + 1:02d}",
                               "algorithm": algorithm, "values": values})
-    for question in questions if version == VERSION else []:
+    for question_index, question in enumerate(questions if version == VERSION else []):
         # Opaque IDs and independently shuffled order avoid encoding the key in
         # a choice value or keeping the right answer at a predictable position.
-        choices = [{"id": secrets.token_hex(8), "text": EXPLANATIONS[name],
+        choices = [{"id": secrets.token_hex(8), "text": reasoning_text(name, question_index),
                     "correct": name == question["algorithm"]} for name in ALGORITHMS]
         secrets.SystemRandom().shuffle(choices)
         question["reasoning_choices"] = choices

@@ -7,7 +7,9 @@ let frameIndex = 0;
 let timer = null;
 let dirty = false;
 let busy = false;
-let backendAvailable = false;
+let backendAvailable = true;
+let pendingDraft = null;
+let checkingSession = false;
 
 function validationMessage(path) {
     if (path === "/access") return "Enter a valid UCSD email address ending in @ucsd.edu.";
@@ -17,6 +19,29 @@ function validationMessage(path) {
 }
 
 async function api(path, method = "GET", body) {
+    // Only repeat the read-only session check. Never replay access, saves or submit.
+    const delays = [5000, 10000, 20000, 30000];
+    const retryDeadline = Date.now() + 90000;
+    const previousNotice = element("notice").textContent;
+    const reconnecting = "Reconnecting to your challenge. This can take about a minute. Keep this page open; any unsaved choices will stay here.";
+    try {
+        for (let attempt = 0; ; attempt++) {
+            try {
+                return await request(path, method, body);
+            } catch (error) {
+                if (method !== "GET" || !path.startsWith("/current") ||
+                    error.status !== 503 || error.unavailable || attempt >= delays.length ||
+                    Date.now() + delays[attempt] >= retryDeadline) throw error;
+                element("notice").textContent = reconnecting;
+                await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
+            }
+        }
+    } finally {
+        if (element("notice").textContent === reconnecting) element("notice").textContent = previousNotice;
+    }
+}
+
+async function request(path, method = "GET", body) {
     let response;
     try {
         response = await fetch(`/api/challenge${path}`, {
@@ -35,10 +60,26 @@ async function api(path, method = "GET", body) {
         if (unavailable) backendAvailable = false;
         if (response.status === 401) backendAvailable = true;
         if (response.status === 401 && state) {
+            const email = state.email;
+            if (dirty && state.question) pendingDraft = {
+                email, position: state.question.number - 1,
+                identification: element("identification").value,
+                reasoning: element("reasoning").value,
+            };
+            stopPlayback();
+            state = null;
+            dirty = false;
+            renderIntro();
             element("access").hidden = false;
-            element("email").value = state.email;
+            element("challenge").hidden = true;
+            element("results").hidden = true;
+            element("signout").hidden = true;
+            element("student").textContent = "";
+            element("notice").textContent = "";
+            element("email").value = email;
         }
         const message = unavailable ? "Challenge Mode is not available on this server yet. Please return once it has been enabled." :
+            response.status === 503 && (path === "/access" || !state) ? "Could not start or resume your challenge because the database is temporarily unavailable. Please try again." :
             typeof result.detail === "string" ? result.detail :
             response.status === 422 ? validationMessage(path) :
             path === "/access" ? "Could not check access. Please try again." : "Could not save. Please try again.";
@@ -94,11 +135,11 @@ function drawFrame() {
         return bar;
     });
     element("bars").replaceChildren(...bars);
-    element("bars").setAttribute("aria-label", `Array: ${frame.values.join(", ")}. ${frame.action}.`);
-    element("array-text").textContent = frame.values.join(", ");
+    element("bars").setAttribute("aria-label", `Sorting animation frame ${frameIndex + 1} of ${frames.length}: ${frame.action}.`);
     element("action").textContent = { ready: "Ready to play", compare: "Comparing highlighted positions", swap: "Swapping highlighted positions", write: "Writing a value", read: "Reading a value", complete: "Animation complete" }[frame.action];
     element("frame-count").textContent = `Frame ${frameIndex + 1} / ${frames.length}`;
     element("step").disabled = frameIndex === frames.length - 1;
+    element("step-back").disabled = frameIndex === 0;
 }
 
 function advance() {
@@ -190,7 +231,7 @@ function render(result, focus = true) {
 element("access-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     if (busy) return;
-    const draft = dirty && state?.question ? { email: state.email, position: state.question.number - 1, identification: element("identification").value, reasoning: element("reasoning").value } : null;
+    const draft = dirty && state?.question ? { email: state.email, position: state.question.number - 1, identification: element("identification").value, reasoning: element("reasoning").value } : pendingDraft;
     setBusy(true);
     try {
         let result = await api("/access", "POST", { email: element("email").value.trim() });
@@ -204,6 +245,7 @@ element("access-form").addEventListener("submit", async (event) => {
             for (const radio of element("reasoning-options").querySelectorAll("input")) radio.checked = radio.value === draft.reasoning;
             markDirty();
         }
+        pendingDraft = null;
         if (result.status === "in_progress") element("notice").textContent = result.saved_count ? "Welcome back. Your saved challenge has resumed." : "Your challenge has begun. Watch the animation, then answer below.";
     } catch (error) { showError(error); }
     finally { setBusy(false); }
@@ -229,7 +271,10 @@ element("answer-form").addEventListener("submit", async (event) => {
             element("notice").textContent = `Question ${position + 1} saved.`;
         }
     } catch (error) {
-        element("save-status").textContent = dirty ? "Not saved. Your answer is still here; please retry." : "Answer saved. Please retry to finish continuing or submitting.";
+        element("save-status").textContent = error.status === 401 ?
+            "Session ended. Sign in again to retry this unsaved answer." :
+            dirty ? "Not saved. Your answer is still here; please retry." :
+                "Answer saved. Please retry to finish continuing or submitting.";
         showError(error);
     } finally { setBusy(false); }
 });
@@ -257,6 +302,7 @@ element("play").addEventListener("click", () => {
     timer = setTimeout(advance, Number(element("speed").value));
 });
 element("step").addEventListener("click", () => { stopPlayback(); frameIndex = Math.min(frameIndex + 1, state.question.frames.length - 1); drawFrame(); });
+element("step-back").addEventListener("click", () => { stopPlayback(); frameIndex = Math.max(frameIndex - 1, 0); drawFrame(); });
 element("replay").addEventListener("click", () => { stopPlayback(); frameIndex = 0; drawFrame(); });
 element("signout").addEventListener("click", async () => {
     if (busy || (dirty && !window.confirm("Leave without saving the edits on this question? Earlier saved answers will be kept."))) return;
@@ -265,6 +311,7 @@ element("signout").addEventListener("click", async () => {
         await api("/session", "DELETE");
         stopPlayback();
         state = null;
+        pendingDraft = null;
         renderIntro();
         dirty = false;
         element("access").hidden = false;
@@ -275,8 +322,28 @@ element("signout").addEventListener("click", async () => {
     } catch (error) { showError(error); }
     finally { setBusy(false); }
 });
-window.addEventListener("beforeunload", (event) => { if (dirty) { event.preventDefault(); event.returnValue = ""; } });
+window.addEventListener("beforeunload", (event) => { if (dirty || pendingDraft) { event.preventDefault(); event.returnValue = ""; } });
 
+async function checkSessionOnReturn() {
+    if (!state || busy || checkingSession) return;
+    checkingSession = true;
+    setBusy(true);
+    try {
+        await api("/current");
+        element("error").hidden = true;
+    } catch (error) {
+        showError(error);
+    } finally {
+        checkingSession = false;
+        setBusy(false);
+    }
+}
+
+document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") checkSessionOnReturn();
+});
+
+setBusy(true);
 api("/current").then((result) => {
     render(result, false);
     if (result.status === "in_progress") element("notice").textContent = "Your saved challenge has resumed.";

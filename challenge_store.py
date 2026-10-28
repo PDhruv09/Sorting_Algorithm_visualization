@@ -182,6 +182,9 @@ class ChallengeStore:
         return attempt
 
     def state(self, token, position=None):
+        # An anonymous page load does not need to wake or contact the database.
+        if not token or len(token) > 100:
+            raise HTTPException(401, "Enter your email to start or resume your challenge.")
         with self.connection() as database:
             attempt = self.authenticated(database, token)
             return self.public_state(attempt, position)

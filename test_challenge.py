@@ -69,6 +69,13 @@ class ChallengeTests(unittest.TestCase):
     def access(self, email=EMAIL):
         return self.client.post("/api/challenge/access", json={"email": email}, headers=HEADERS)
 
+    def test_anonymous_state_does_not_contact_database(self):
+        with patch.object(self.store, "connection", side_effect=AssertionError("Must not connect")):
+            from fastapi import HTTPException
+            with self.assertRaises(HTTPException) as caught:
+                self.store.state(None)
+        self.assertEqual(401, caught.exception.status_code)
+
     def save(self, position, revision, identification="insertion", reasoning="A sorted prefix grows."):
         return self.client.put(f"/api/challenge/answers/{position}", headers=HEADERS,
                                json={"identification": identification, "reasoning": reasoning, "revision": revision})

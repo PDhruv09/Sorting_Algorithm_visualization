@@ -69,6 +69,12 @@ For Azure, configure these environment variables on the new revision:
 | `CHALLENGE_TEST_VERSION` | `sorting-15-v2` |
 | `CHALLENGE_FEEDBACK_RELEASED` | `0` |
 | `CHALLENGE_LOCAL_HTTP` | `0` |
+| `CHALLENGE_ACCESS_REQUESTS_PER_MINUTE` | `240` for the classroom profile; default `20` |
+| `CHALLENGE_WRITE_REQUESTS_PER_MINUTE` | `2400` for the classroom profile; default `120` |
+
+For the 70-student image/replica/limit update and rollout checks, see
+[classroom-rollout.md](classroom-rollout.md). Rate limits are per reported client
+IP per application process; they are not per-student quotas.
 
 Use the tested image's immutable commit SHA tag from GHCR, after a successful
 package build. The existing workflow runs on `main` pushes or manual dispatch;
@@ -91,8 +97,61 @@ students retain their draft and can retry when a request fails. Writes are not
 automatically replayed after an uncertain commit. Login timeout is 60s to allow
 serverless resume; query timeout is 15s. Login timeout is passed to the driver,
 not included in the connection string. A first connection during resume may
-still need to be retried by the user. Lock timeout is bounded separately:
+still need to be retried by the user. For database-unavailable error 40613, the
+adapter retries login up to four times with delays of 5, 10, 20 and 30 seconds,
+before any application SQL runs. A 90-second retry budget bounds whether another
+attempt is started, and remaining budget caps the next driver's login timeout
+at 60 seconds. Managed-identity timing remains driver-controlled. Other login
+failures, queries and commits are not retried. Lock timeout is bounded separately:
 lock waits 10s; managed-identity token acquisition has the driver's own timing.
+
+### Investigating intermittent 503 responses
+
+Compare `/health` with the failed `/api/challenge/...` request. A healthy app does
+not establish SQL availability, because the health endpoint never queries SQL.
+An anonymous `/api/challenge/current` returns 401 without contacting SQL too.
+
+In Container App console logs, look for `Azure SQL failure` at the failure's UTC
+time. It records `stage`, `native_code`, `sqlstate` and elapsed seconds, without
+the raw driver message, connection string, email or answer. A login retried for
+40613 records `Azure SQL login retry`. Unrecognized driver diagnostic formats
+produce `None` codes and are not automatically retried.
+
+For error 40613, compare SQL database pause/resume activity with that timestamp;
+the code means temporary database unavailability and does not by itself prove
+auto-pause. For persistent errors inspect identity, firewall, schema and grants
+using the read-only diagnostic above. Preserve the failing request path, HTTP
+status and timing. A browser network disconnection and an HTTP 503 are different
+failure observations. Do not clear student attempts to troubleshoot either one.
+
+The browser also retries only GET `/current` checks on temporary 503 responses,
+with up to four waits of 5, 10, 20 and 30 seconds. It stops scheduling retries
+after a 90-second budget; an already running request may finish later. During
+recovery it displays a reconnecting message, disables save/navigation controls,
+and preserves unsaved choices in the open tab. A confirmed 401 returns to email
+entry and keeps the draft for a same-email resume. `/access` checks the roster;
+`/current` checks the session. Browser writes are never automatically replayed.
+
+Before student rollout, build the tested commit with the existing manually
+dispatched Docker workflow and choose its immutable SHA image tag in Azure.
+Preserve all environment variables, managed identity and SQL data. Record the
+previous image tag for rollback. Verify the following on the deployed revision:
+
+- An unauthorized email returns 403 from `/access`; anonymous `/current` returns 401.
+- An authorized tester can save, refresh and resume the same saved attempt.
+- After natural SQL auto-pause, returning to a tab or reloading recovers without
+  repeated manual refreshes. Watch console diagnostics during the test.
+- Unsaved choices survive temporary failures in the open tab. After confirmed
+  session expiry, same-email reentry restores the in-tab draft. Closing the tab
+  can still discard unsaved choices.
+- Several authorized testers can use distinct sessions concurrently; one
+  student's answers never appear under another student's email.
+- Final submission persists and remains available after refresh.
+
+Check the SQL free allowance and exhaustion behavior before changing availability
+settings. The free tier has no SLA and an exhausted allowance can pause the
+database until the next month. Moving to paid usage or disabling supported
+auto-pause settings is a separate billing decision, not part of this code patch.
 
 ## Grading, versions, and release
 
@@ -123,7 +182,10 @@ dependencies. Ubuntu also installs `libltdl7`, `libkrb5-3`, and
 patched, but uses the same non-root user, port and Java runner. SQL uses encrypted
 connections with certificate validation and parameter binding. No new Azure
 resources or charges are triggered by building the image. Actual database use
-consumes the existing free allowance; keep overage billing disabled as selected.
+consumes the existing free allowance. The operator has subsequently selected
+`BillOverUsage` and disabled idle auto-pause for student availability; compute
+continues consuming allowance while idle and can incur overage charges. Confirm
+the saved Azure settings and cost estimate before deployment.
 
 Alternatives: keep SQLite for local-only work (no cloud durability); use pyodbc
 with a separately installed Microsoft ODBC driver (more image setup); or use SQL

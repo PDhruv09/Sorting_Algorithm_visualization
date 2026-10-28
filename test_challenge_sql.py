@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from fastapi import HTTPException
-from challenge_sql import AzureChallengeStore, SQLConnection, connection_string
+from challenge_sql import AzureChallengeStore, SQLConnection, connection_string, error_codes
 from challenge_store import DatabaseUnavailable, create_store
 
 CONFIG = {
@@ -96,7 +96,7 @@ class AzureStoreTests(unittest.TestCase):
         self.connection.close.assert_called_once()
         self.connection.rollback.assert_not_called()
         self.assertEqual(15, self.connection.timeout)
-        self.assertEqual(60, self.driver.connect.call_args.kwargs["timeout"])
+        self.assertTrue(1 <= self.driver.connect.call_args.kwargs["timeout"] <= 60)
         self.assertFalse(self.driver.connect.call_args.kwargs["autocommit"])
 
     def test_business_rejection_rolls_back_without_masking_http_error(self):
@@ -132,6 +132,67 @@ class AzureStoreTests(unittest.TestCase):
                 self.fail("Must not run application queries with an unknown schema")
         self.connection.rollback.assert_called_once()
         self.connection.close.assert_called_once()
+
+    @patch("challenge_sql.time.sleep")
+    def test_database_resume_retries_login_before_running_sql(self, sleep):
+        error = DriverError("SQLSTATE: 08001 Native Error: 40613 private database name")
+        self.driver.connect.side_effect = [error, self.connection]
+        with self.assertLogs("challenge_sql", level="WARNING") as logs:
+            with self.store.connection():
+                pass
+        self.assertEqual(2, self.driver.connect.call_count)
+        sleep.assert_called_once_with(5)
+        self.connection.commit.assert_called_once()
+        self.assertNotIn("private database", " ".join(logs.output))
+
+    @patch("challenge_sql.time.sleep")
+    def test_resume_retry_is_bounded_and_logs_only_codes(self, sleep):
+        self.driver.connect.side_effect = DriverError("SQLSTATE: 08001 Native Error: 40613 private email")
+        with self.assertLogs("challenge_sql", level="WARNING") as logs:
+            with self.assertRaises(DatabaseUnavailable):
+                with self.store.connection():
+                    self.fail("Login never succeeded")
+        self.assertEqual(5, self.driver.connect.call_count)
+        self.assertEqual([5, 10, 20, 30], [call.args[0] for call in sleep.call_args_list])
+        self.assertIn("stage=connect", " ".join(logs.output))
+        self.assertIn("native_code=40613", " ".join(logs.output))
+        self.assertNotIn("private email", " ".join(logs.output))
+        self.cursor.execute.assert_not_called()
+
+    @patch("challenge_sql.time.sleep")
+    @patch("challenge_sql.time.monotonic", side_effect=[0, 0, 86])
+    def test_login_retry_stops_when_time_budget_is_exhausted(self, monotonic, sleep):
+        self.driver.connect.side_effect = DriverError("Native Error: 40613")
+        with self.assertRaises(DriverError):
+            self.store.connect()
+        self.driver.connect.assert_called_once()
+        sleep.assert_not_called()
+
+    @patch("challenge_sql.time.sleep")
+    def test_resume_error_during_query_or_commit_is_not_replayed(self, sleep):
+        for stage in ("operation", "commit"):
+            with self.subTest(stage=stage):
+                self.driver.reset_mock()
+                self.connection.commit.side_effect = None
+                error = DriverError("Native Error: 40613 private answer")
+                if stage == "commit":
+                    self.connection.commit.side_effect = error
+                with self.assertLogs("challenge_sql", level="ERROR") as logs:
+                    with self.assertRaises(DatabaseUnavailable):
+                        with self.store.connection():
+                            if stage == "operation":
+                                raise error
+                self.driver.connect.assert_called_once()
+                sleep.assert_not_called()
+                self.connection.rollback.assert_called_once()
+                self.connection.close.assert_called_once()
+                self.assertIn(f"stage={stage}", " ".join(logs.output))
+                self.assertNotIn("private answer", " ".join(logs.output))
+
+    def test_diagnostic_code_formats_and_unknown_error(self):
+        for message in ("SQLSTATE: 08001 Native Error: 40613", "[SQL Server]unavailable (40613) (SQLDriverConnect)"):
+            self.assertEqual(40613, error_codes(DriverError(message))[0])
+        self.assertEqual((None, None), error_codes(DriverError("private message")))
 
     def test_row_mapping_and_missing_row(self):
         database = SQLConnection(self.connection)

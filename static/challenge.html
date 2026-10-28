@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Challenge Mode · Sorting Visualizer</title>
     <link rel="stylesheet" href="/static/challenge.css?v=choices-3">
-    <script src="/static/challenge.js?v=choices-3" defer></script>
+    <script src="/static/challenge.js?v=choices-4" defer></script>
 </head>
 <body>
     <main>
@@ -25,7 +25,7 @@
             <div>
                 <p class="eyebrow">YOUR CHALLENGE</p>
                 <h2>15 animations. One challenge.</h2>
-                <p>Identify the algorithm and choose the reason that best explains each animation. Your answers save when you select Next. Your total score appears after final submission.</p>
+                <p>Identify the algorithm and choose the reason that best explains each animation. Your answers are saved when you select Next. Your total score appears after final submission.</p>
                 <p class="muted">Returning? Enter the same email to resume your saved progress or view your score. Detailed feedback becomes available when course staff release it after the PA.</p>
             </div>
             <form id="access-form">
@@ -49,12 +49,12 @@
                     <div class="frame-info"><span id="action"></span><span id="frame-count"></span></div>
                     <div class="playback">
                         <button id="play" type="button">Play</button>
-                        <button id="step" class="secondary" type="button">Step</button>
+                        <button id="step-back" class="secondary" type="button">← Step back</button>
+                        <button id="step" class="secondary" type="button">Step forward →</button>
                         <button id="replay" class="secondary" type="button">Replay</button>
                         <label for="speed">Speed <select id="speed"><option value="900">Slow</option><option value="450" selected>Normal</option><option value="180">Fast</option></select></label>
                     </div>
                     <p class="legend"><span class="dot compare"></span> Compare <span class="dot write"></span> Write / swap <span class="dot read"></span> Read</p>
-                    <details><summary>View current array as text</summary><p id="array-text" class="array-text"></p></details>
                 </section>
                 <section class="card answer-card">
                     <form id="answer-form">

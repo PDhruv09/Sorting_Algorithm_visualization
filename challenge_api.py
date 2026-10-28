@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import logging
 import sqlite3
 import time
 from collections import deque
@@ -20,6 +21,13 @@ from challenge_store import create_store, DatabaseUnavailable, SESSION_SECONDS, 
 
 COOKIE = "challenge_session"
 BASE = Path(__file__).resolve().parent
+
+
+def request_limit(name, default):
+    value = int(os.getenv(name, str(default)))
+    if not 1 <= value <= 100000:
+        raise ValueError(f"{name} must be between 1 and 100000 requests per minute")
+    return value
 
 
 class AccessRequest(BaseModel):
@@ -64,6 +72,8 @@ class ChallengeProtection:
                 raise ValueError("CHALLENGE_PUBLIC_ORIGIN must be an HTTPS origin without a path")
         self.requests = {}
         self.lock = Lock()
+        self.access_limit = request_limit("CHALLENGE_ACCESS_REQUESTS_PER_MINUTE", 20)
+        self.answer_limit = request_limit("CHALLENGE_WRITE_REQUESTS_PER_MINUTE", 120)
 
     async def __call__(self, scope, receive, send):
         path = scope.get("path", "")
@@ -97,7 +107,7 @@ class ChallengeProtection:
             now = time.monotonic()
             client = scope.get("client") or ("unknown", 0)
             key = (client[0], "access" if path.endswith("/access") else "answers")
-            limit = 20 if key[1] == "access" else 120
+            limit = self.access_limit if key[1] == "access" else self.answer_limit
             with self.lock:
                 self.requests = {address: times for address, times in self.requests.items() if times and times[-1] > now - 60}
                 if key not in self.requests and len(self.requests) >= 4096:
@@ -135,8 +145,14 @@ class ChallengeProtection:
             request_receive = receive
         try:
             await self.app(scope, request_receive, protected_send)
-        except (sqlite3.Error, OSError, DatabaseUnavailable):
-            await reject(503, "Your response could not be saved. Keep this page open and try again.")
+        except (sqlite3.Error, OSError, DatabaseUnavailable) as error:
+            logging.getLogger(__name__).error(
+                "Challenge persistence failure: error_type=%s sqlite_code=%s",
+                type(error).__name__, getattr(error, "sqlite_errorcode", None))
+            detail = ("Your response could not be saved. Keep this page open and try again."
+                      if path.startswith("/api/challenge/answers/") or path == "/api/challenge/submit"
+                      else "Challenge data is temporarily unavailable. Keep this page open and try again.")
+            await reject(503, detail)
 
 
 def create_router(database_path=None):

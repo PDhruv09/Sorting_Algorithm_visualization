@@ -3,9 +3,18 @@ from contextlib import contextmanager
 import logging
 import os
 import re
+import time
 from uuid import UUID
 
 from challenge_store import ChallengeStore, DatabaseUnavailable, configured_version
+
+
+def error_codes(error):
+    """Extract codes only; driver messages may contain private database values."""
+    message = str(error)
+    native = re.search(r"(?:Native Error(?: Code)?\s*[:=]\s*|\()(-?\d{1,10})(?:\)|\b)", message, re.I)
+    state = re.search(r"SQLSTATE(?:\s+code)?\s*[:=]\s*\[?([A-Z0-9]{5})\b", message, re.I)
+    return (int(native[1]) if native else None, state[1].upper() if state else None)
 
 
 def _identifier(name):
@@ -74,20 +83,45 @@ class AzureChallengeStore(ChallengeStore):
         # Close idle connections immediately so an unused serverless DB can pause.
         self.driver.pooling(enabled=False)
 
+    def connect(self):
+        # Retry only database-unavailable during login, before any application SQL.
+        # Never retry a transaction or a commit whose outcome may be unknown.
+        delays = (5, 10, 20, 30)
+        deadline = time.monotonic() + 90
+        for attempt in range(len(delays) + 1):
+            try:
+                timeout = max(1, min(60, int(deadline - time.monotonic())))
+                return self.driver.connect(self.connection_string, autocommit=False, timeout=timeout)
+            except self.driver.Error as error:
+                native, state = error_codes(error)
+                if (native != 40613 or attempt == len(delays) or
+                        time.monotonic() + delays[attempt] >= deadline):
+                    raise
+                logging.getLogger(__name__).warning(
+                    "Azure SQL login retry: native_code=%s sqlstate=%s delay_seconds=%s",
+                    native, state, delays[attempt])
+                time.sleep(delays[attempt])
+
     @contextmanager
     def connection(self):
         connection = None
+        stage = "connect"
+        started = time.monotonic()
         try:
             # Login timeout is a driver argument, not a connection-string keyword.
             # Allow a paused serverless database time to resume.
-            connection = self.driver.connect(self.connection_string, autocommit=False, timeout=60)
+            connection = self.connect()
+            stage = "setup"
             connection.timeout = 15
             database = SQLConnection(connection)
             database.execute("SET XACT_ABORT ON; SET LOCK_TIMEOUT 10000;")
+            stage = "schema"
             version = database.execute("SELECT version FROM dbo.challenge_schema WHERE singleton = 1").fetchone()
             if version is None or version["version"] != 1:
                 raise DatabaseUnavailable("Unsupported challenge schema")
+            stage = "operation"
             yield database
+            stage = "commit"
             connection.commit()
         except BaseException as error:
             if connection is not None:
@@ -96,7 +130,13 @@ class AzureChallengeStore(ChallengeStore):
                 except self.driver.Error:
                     pass
             if isinstance(error, self.driver.Error):
+                native, state = error_codes(error)
+                logging.getLogger(__name__).error(
+                    "Azure SQL failure: stage=%s native_code=%s sqlstate=%s elapsed_seconds=%.1f",
+                    stage, native, state, time.monotonic() - started)
                 raise DatabaseUnavailable("Azure SQL operation failed") from None
+            if isinstance(error, DatabaseUnavailable):
+                logging.getLogger(__name__).error("Azure SQL schema check failed: stage=%s", stage)
             raise
         finally:
             if connection is not None:
