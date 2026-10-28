@@ -464,6 +464,33 @@ def _prepare_public_result(
 # Static frontend
 # ============================================================
 
+@app.get("/challenge", include_in_schema=False)
+def challenge_page():
+    return FileResponse(STATIC / "challenge.html", headers={"Cache-Control": "no-store"})
+
+
+if os.getenv("CHALLENGE_MODE_ENABLED", "0") == "1":
+    from challenge_api import ChallengeProtection, create_router
+
+    app.add_middleware(ChallengeProtection)
+    app.include_router(create_router())
+else:
+    @app.api_route(
+        "/api/challenge/{path:path}",
+        methods=["GET", "POST", "PUT", "DELETE"],
+        include_in_schema=False,
+    )
+    def challenge_unavailable(path: str):
+        return JSONResponse(
+            status_code=503,
+            content={
+                "code": "challenge_unavailable",
+                "detail": "Challenge Mode is not available on this server yet.",
+            },
+            headers={"Cache-Control": "no-store"},
+        )
+
+
 app.mount(
     "/static",
     StaticFiles(

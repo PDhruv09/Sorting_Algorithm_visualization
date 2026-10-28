@@ -26,6 +26,9 @@ RUN apt-get update \
         python3 \
         python3-pip \
         python3-venv \
+        libltdl7 \
+        libkrb5-3 \
+        libgssapi-krb5-2 \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
@@ -36,9 +39,11 @@ RUN apt-get update \
 
 RUN groupadd \
         --system \
+        --gid 999 \
         sortviz \
     && useradd \
         --system \
+        --uid 999 \
         --gid sortviz \
         --create-home \
         --home-dir /home/sortviz \
@@ -72,6 +77,7 @@ RUN python3 -m pip install \
 
 COPY server.py /app/server.py
 COPY runner.py /app/runner.py
+COPY challenge_api.py challenge_bank.py challenge_store.py challenge_roster.py challenge_sql.py /app/
 COPY static /app/static
 
 
@@ -87,10 +93,11 @@ COPY static /app/static
 # temporary directories underneath this location.
 # ------------------------------------------------------------
 
-RUN mkdir -p /tmp/sortviz \
+RUN mkdir -p /tmp/sortviz /var/lib/sortviz \
     && chown -R sortviz:sortviz /tmp/sortviz \
+    && chown sortviz:sortviz /var/lib/sortviz \
     && chown -R sortviz:sortviz /app \
-    && chmod 700 /tmp/sortviz
+    && chmod 700 /tmp/sortviz /var/lib/sortviz
 
 
 # From this point onward, Python/Java temporary files should

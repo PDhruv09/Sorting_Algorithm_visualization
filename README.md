@@ -59,6 +59,10 @@ If the source compiles but cannot be instrumented safely, the runner retries the
 
 ## Local run
 
+Phase 2 Challenge Mode setup, private roster management, saving behavior, and
+tests are documented in [docs/phase2.md](docs/phase2.md). The feature is opt-in
+for local testing and does not change the Java execution pipeline.
+
 Requirements:
 
 - Python 3.11+
@@ -81,6 +85,11 @@ docker compose up --build
 ```
 
 Then open `http://localhost:8000`.
+
+Local Compose enables Challenge Mode with a persistent database volume. Authorize
+student emails using `docker compose exec sorting-visualizer python3 challenge_roster.py student@ucsd.edu`.
+The container uses its own allowlist; it does not copy the host database. See
+[Phase 2 Docker setup](docs/phase2.md#local-docker-testing) for alternate ports and data persistence.
 
 ## Important deployment/security note
 
@@ -120,3 +129,10 @@ Example:
 ```
 
 Successful responses include the detected class/method, final array, stdout/stderr, and trace steps. Failed responses identify compilation errors, runtime exceptions, or timeouts.
+
+## Phase 2 Azure SQL update
+
+See [Azure deployment steps](docs/azure-deployment.md) for the managed-identity
+connection, manual schema/grants, and Container App settings. Version 2 uses
+multiple-choice reasoning and shows only the total score until staff release
+detailed feedback. Local development still uses SQLite.
