@@ -27,6 +27,7 @@ async function loadPage(status, payload) {
     };
     const context = vm.createContext({
         document,
+        Option: function(text, value) { return { textContent: text, value }; },
         clearTimeout,
         setTimeout: (callback) => { callback(); return 1; },
         window: { addEventListener() {} },
@@ -90,14 +91,14 @@ test("failed access, answer saves and final submission are never automatically r
 });
 
 test("completed attempts show total score without unreleased feedback", async () => {
-    const payload = { status: "submitted", email: "tester@ucsd.edu", score: 29, max_score: 30 };
+    const payload = { status: "submitted", email: "tester@ucsd.edu", score: 14, max_score: 15 };
     const { element, context } = await loadPage(200, payload);
     assert.equal(element("results").hidden, false);
     assert.equal(element("challenge").hidden, true);
     assert.equal(element("access").hidden, true);
     assert.equal(element("intro-title").textContent, "Thank you for participating.");
     assert.equal(element("intro-subtitle").textContent, "You can now leave the challenge or return to the visualizer.");
-    assert.equal(element("score").textContent, "Score: 29 / 30");
+    assert.equal(element("score").textContent, "Score: 14 / 15");
     assert.equal(element("feedback").hidden, true);
     vm.runInContext('render({ status: "submitted", email: "tester@ucsd.edu" })', context);
     assert.equal(element("notice").textContent, "");
@@ -107,6 +108,36 @@ test("completed attempts show total score without unreleased feedback", async ()
     vm.runInContext("renderIntro()", context);
     assert.equal(element("intro-title").textContent, "Read the movements.");
     assert.match(element("intro-subtitle").textContent, /Watch the array/);
+});
+
+function fourSortPayload() {
+    return { status: "in_progress", email: "tester@ucsd.edu", attempt_id: "new-four-sort-attempt",
+        test_version: "sorting-15-v3", points_per_question: 1, total: 15, saved_count: 0,
+        options: { insertion: "Insertion sort", selection: "Selection sort", quick: "Quick sort", merge: "Merge sort" },
+        question: { number: 1, frames: [{ values: [3, 1, 2], active: [], action: "ready" }],
+            reasoning_choices: ["Ordered prefix", "Selected minimum", "Pivot partition", "Merged ranges"].map((text, index) => ({id: `new-${index}`, text})) } };
+}
+
+test("four-sort page offers four choices and states one whole point per question", async () => {
+    const { element } = await loadPage(200, fourSortPayload());
+    assert.deepEqual(Array.from(element("identification").children, child => child.value),
+        ["", "insertion", "selection", "quick", "merge"]);
+    assert.equal(element("reasoning-options").children.length, 4);
+    assert.match(element("reasoning-help").textContent, /One point per question/);
+    assert.doesNotMatch(element("reasoning-help").textContent, /0\.5|half/);
+});
+
+test("old-version unsaved choices are not applied to a new four-sort attempt", async () => {
+    const { element, context } = await loadPage(401, {});
+    vm.runInContext('pendingDraft = {email: "tester@ucsd.edu", attempt_id: "old-attempt", position: 8, identification: "bucket", reasoning: "old-choice"}', context);
+    element("email").value = "tester@ucsd.edu";
+    const calls = [];
+    context.fetch = async (url) => { calls.push(url); return { ok: true, status: 200, json: async () => fourSortPayload() }; };
+    await element("access-form").events.get("submit")({preventDefault() {}});
+    assert.deepEqual(calls, ["/api/challenge/access"]);
+    assert.equal(element("identification").value, "");
+    assert.equal(element("reasoning").value, "");
+    assert.equal(vm.runInContext("dirty", context), false);
 });
 
 for (const [status, payload] of [[404, { detail: "Not found." }],

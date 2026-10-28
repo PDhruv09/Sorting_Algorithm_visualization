@@ -13,7 +13,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from challenge_api import COOKIE, ChallengeProtection, create_router
-from challenge_bank import ALGORITHMS, LEGACY_VERSION, VERSION, animation, make_questions
+from challenge_bank import ALGORITHMS, LEGACY_VERSION, PREVIOUS_VERSION, VERSION, animation, make_questions
 from challenge_store import ChallengeStore
 
 
@@ -211,13 +211,13 @@ class ChallengeTests(unittest.TestCase):
                 self.assertNotEqual(legacy, state["attempt_id"])
                 with store.connection() as database:
                     questions = json.loads(database.execute("SELECT questions FROM attempts WHERE id = ?", (state["attempt_id"],)).fetchone()[0])
-                self.assertEqual(6, len(state["question"]["reasoning_choices"]))
+                self.assertEqual(4, len(state["question"]["reasoning_choices"]))
                 self.assertTrue(all(set(choice) == {"id", "text"} for choice in state["question"]["reasoning_choices"]))
                 for invalid in ("'; DROP TABLE students; --", "<script>alert(1)</script>", questions[1]["reasoning_choices"][0]["id"]):
                     response = client.put("/api/challenge/answers/0", headers=HEADERS, json={"identification": "merge", "reasoning": invalid, "revision": 0})
                     self.assertEqual(422, response.status_code)
                 for position, question in enumerate(questions):
-                    # 15 correct identifications; 14 correct reasons = 29/30.
+                    # 14 fully correct answers; one identification-only answer.
                     selected = next(choice for choice in question["reasoning_choices"] if choice["correct"] == (position < 14))
                     response = client.put(f"/api/challenge/answers/{position}", headers=HEADERS,
                         json={"identification": question["algorithm"], "reasoning": selected["id"], "revision": state["revision"]})
@@ -230,21 +230,28 @@ class ChallengeTests(unittest.TestCase):
                         self.assertEqual(selected["id"], previous["answer"]["reasoning"])
                         self.assertEqual(questions[0]["reasoning_choices"][0]["id"], previous["question"]["reasoning_choices"][0]["id"])
                 result = client.post("/api/challenge/submit", headers=HEADERS, json={"revision": state["revision"]}).json()
-                self.assertEqual((29, 30), (result["score"], result["max_score"]))
+                self.assertEqual((14, 15), (result["score"], result["max_score"]))
+                self.assertNotIn("internal_score", json.dumps(result))
                 self.assertNotIn("feedback", result)
                 requested = client.get("/api/challenge/current?feedback=true").json()
                 self.assertNotIn("feedback", requested)
-                self.assertEqual(29, requested["score"])
+                self.assertEqual(14, requested["score"])
                 resumed = client.post("/api/challenge/access", json={"email": EMAIL}, headers=HEADERS).json()
-                self.assertEqual(29, resumed["score"])
+                self.assertEqual(14, resumed["score"])
                 self.assertNotIn("feedback", resumed)
                 with patch.dict(os.environ, {"CHALLENGE_FEEDBACK_RELEASED": "1"}):
                     released = client.get("/api/challenge/current").json()
                     self.assertEqual(15, len(released["feedback"]["questions"]))
                     self.assertIn("correct_answer", released["feedback"]["questions"][0])
+                    self.assertNotIn("internal_score", json.dumps(released))
+                    self.assertNotIn("internal_points", json.dumps(released))
+                    self.assertTrue(all(item["points"] in (0, 1) for item in released["feedback"]["questions"]))
                 self.assertNotIn("feedback", client.get("/api/challenge/current").json())
                 with store.connection() as database:
                     self.assertEqual(2, database.execute("SELECT count(*) FROM attempts").fetchone()[0])
+                    stored = json.loads(database.execute("SELECT feedback FROM attempts WHERE id = ?", (resumed["attempt_id"],)).fetchone()[0])
+                self.assertEqual(14.5, stored["internal_score"])
+                self.assertEqual(0.5, stored["questions"][-1]["internal_points"])
 
     def test_save_resume_restart_and_revisions(self):
         initial = self.access().json()

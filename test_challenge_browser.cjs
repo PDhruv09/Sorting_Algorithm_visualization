@@ -19,7 +19,7 @@ const assert = require("node:assert/strict");
         await page.locator("#start").click();
         await page.getByText("Question 1 of 15", { exact: true }).waitFor();
         assert.equal(await page.locator("#reasoning").isVisible(), false);
-        assert.equal(await page.locator("#reasoning-options input").count(), 6);
+        assert.equal(await page.locator("#reasoning-options input").count(), 4);
         await page.locator("#identification").selectOption("insertion");
         const firstChoice = await page.locator("#reasoning-options input").first().getAttribute("value");
         await page.locator("#reasoning-options input").first().check();
@@ -39,7 +39,7 @@ const assert = require("node:assert/strict");
         }
         await page.locator("#results").waitFor();
         const score = await page.locator("#score").textContent();
-        assert.match(score, /^Score: \d+ \/ 30$/);
+        assert.match(score, /^Score: \d+ \/ 15$/);
         assert.equal(await page.locator("#feedback").isVisible(), false);
         await page.reload();
         await page.locator("#results").waitFor();

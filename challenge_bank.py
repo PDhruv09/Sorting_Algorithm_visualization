@@ -5,15 +5,23 @@ import secrets
 
 
 LEGACY_VERSION = "sorting-15-v1"
-VERSION = "sorting-15-v2"
+PREVIOUS_VERSION = "sorting-15-v2"
+VERSION = "sorting-15-v3"
+SUPPORTED_VERSIONS = (LEGACY_VERSION, PREVIOUS_VERSION, VERSION)
 ALGORITHMS = {
     "insertion": "Insertion sort",
     "selection": "Selection sort",
     "merge": "Merge sort",
     "quick": "Quick sort",
-    "counting": "Counting sort",
-    "bucket": "Bucket sort",
 }
+# Historical labels/traces remain available only for preserved v1/v2 attempts.
+HISTORICAL_ALGORITHMS = {**ALGORITHMS, "counting": "Counting sort", "bucket": "Bucket sort"}
+
+
+def algorithms_for_version(version):
+    if version not in SUPPORTED_VERSIONS:
+        raise ValueError("Unsupported challenge test version")
+    return ALGORITHMS if version == VERSION else HISTORICAL_ALGORITHMS
 EXPLANATIONS = {
     "insertion": "A sorted prefix grows one element at a time. The next value is inserted into that prefix by moving larger neighbors to the right.",
     "selection": "Each pass scans the remaining suffix for its smallest value, then swaps that value into the next position in the sorted prefix.",
@@ -84,23 +92,25 @@ def reasoning_text(algorithm, question_index):
 
 
 def make_questions(version=VERSION):
-    if version not in (VERSION, LEGACY_VERSION):
-        raise ValueError("Unsupported challenge test version")
+    algorithms = algorithms_for_version(version)
     generator = random.Random(7315)
     questions = []
-    for algorithm, count in (("insertion", 3), ("selection", 3), ("merge", 3),
-                             ("quick", 2), ("counting", 2), ("bucket", 2)):
+    counts = ((("insertion", 4), ("selection", 4), ("merge", 4), ("quick", 3))
+              if version == VERSION else
+              (("insertion", 3), ("selection", 3), ("merge", 3),
+               ("quick", 2), ("counting", 2), ("bucket", 2)))
+    for algorithm, count in counts:
         for variant in range(count):
             values = generator.sample(range(10, 90), 9)
             if variant == 1:
                 values[6] = values[2]
             questions.append({"id": f"q{len(questions) + 1:02d}",
                               "algorithm": algorithm, "values": values})
-    for question_index, question in enumerate(questions if version == VERSION else []):
+    for question_index, question in enumerate(questions if version != LEGACY_VERSION else []):
         # Opaque IDs and independently shuffled order avoid encoding the key in
         # a choice value or keeping the right answer at a predictable position.
         choices = [{"id": secrets.token_hex(8), "text": reasoning_text(name, question_index),
-                    "correct": name == question["algorithm"]} for name in ALGORITHMS]
+                    "correct": name == question["algorithm"]} for name in algorithms]
         secrets.SystemRandom().shuffle(choices)
         question["reasoning_choices"] = choices
     return questions
@@ -229,7 +239,8 @@ def public_question(question, position):
     return result
 
 
-def grade(questions, answers):
+def grade(questions, answers, version=VERSION):
+    algorithms = algorithms_for_version(version)
     feedback = []
     for position, question in enumerate(questions):
         answer = answers[str(position)]
@@ -239,12 +250,20 @@ def grade(questions, answers):
                                                  for choice in choices)
         feedback.append({"number": position + 1, "correct": correct,
                          "reasoning_correct": reasoning_correct,
-                         "selected_answer": ALGORITHMS[answer["identification"]],
-                         "correct_answer": ALGORITHMS[question["algorithm"]],
+                         "selected_answer": algorithms[answer["identification"]],
+                         "correct_answer": algorithms[question["algorithm"]],
                          "reasoning": next((choice["text"] for choice in choices or []
                                             if choice["id"] == answer["reasoning"]), answer["reasoning"]),
                          "explanation": EXPLANATIONS[question["algorithm"]]})
     multiple_choice = all("reasoning_choices" in question for question in questions)
+    if version == VERSION:
+        for item in feedback:
+            item["points"] = int(item["correct"] and item["reasoning_correct"])
+            item["internal_points"] = (int(item["correct"]) + int(item["reasoning_correct"])) / 2
+        return {"score": sum(item["points"] for item in feedback),
+                "internal_score": sum(item["internal_points"] for item in feedback),
+                "total": len(questions), "questions": feedback,
+                "reasoning_status": "One point when identification and reasoning are both correct."}
     return {"score": sum(int(item["correct"]) + (int(item["reasoning_correct"]) if multiple_choice else 0)
                          for item in feedback),
             "total": len(questions) * (2 if multiple_choice else 1), "questions": feedback,

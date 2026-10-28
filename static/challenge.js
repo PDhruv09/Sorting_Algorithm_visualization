@@ -62,7 +62,7 @@ async function request(path, method = "GET", body) {
         if (response.status === 401 && state) {
             const email = state.email;
             if (dirty && state.question) pendingDraft = {
-                email, position: state.question.number - 1,
+                email, attempt_id: state.attempt_id, position: state.question.number - 1,
                 identification: element("identification").value,
                 reasoning: element("reasoning").value,
             };
@@ -179,7 +179,7 @@ function render(result, focus = true) {
         for (const item of result.feedback?.questions || []) {
             const card = document.createElement("section");
             card.className = "card feedback-item";
-            for (const text of [`Question ${item.number}`, `Your algorithm: ${item.selected_answer}`, `Correct algorithm: ${item.correct_answer}`, `Your reasoning: ${item.reasoning}`, item.explanation]) {
+            for (const text of [`Question ${item.number}`, ...(item.points === undefined ? [] : [`Credit: ${item.points} / 1`]), `Your algorithm: ${item.selected_answer}`, `Correct algorithm: ${item.correct_answer}`, `Your reasoning: ${item.reasoning}`, item.explanation]) {
                 const paragraph = document.createElement("p");
                 paragraph.textContent = text;
                 card.append(paragraph);
@@ -203,7 +203,9 @@ function render(result, focus = true) {
     element("reasoning-label").hidden = !!choices;
     element("character-count").hidden = !!choices;
     element("reasoning-choices").hidden = !choices;
-    element("reasoning-help").textContent = choices ? "One point for identification and one point for reasoning." : "Written reasoning is saved for review.";
+    element("reasoning-help").textContent = choices ?
+        (result.points_per_question === 1 ? "One point per question when the algorithm and reasoning are both correct." :
+            "One point for identification and one point for reasoning.") : "Written reasoning is saved for review.";
     element("reasoning-options").replaceChildren(...(choices || []).map((choice) => {
         const label = document.createElement("label");
         label.className = "reason-choice";
@@ -231,15 +233,15 @@ function render(result, focus = true) {
 element("access-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     if (busy) return;
-    const draft = dirty && state?.question ? { email: state.email, position: state.question.number - 1, identification: element("identification").value, reasoning: element("reasoning").value } : pendingDraft;
+    const draft = dirty && state?.question ? { email: state.email, attempt_id: state.attempt_id, position: state.question.number - 1, identification: element("identification").value, reasoning: element("reasoning").value } : pendingDraft;
     setBusy(true);
     try {
         let result = await api("/access", "POST", { email: element("email").value.trim() });
-        if (draft && draft.email === result.email && result.status === "in_progress") {
+        if (draft && draft.email === result.email && draft.attempt_id === result.attempt_id && result.status === "in_progress") {
             result = await api(`/current?position=${draft.position}`);
         }
         render(result);
-        if (draft && draft.email === result.email && result.status === "in_progress") {
+        if (draft && draft.email === result.email && draft.attempt_id === result.attempt_id && result.status === "in_progress") {
             element("identification").value = draft.identification;
             element("reasoning").value = draft.reasoning;
             for (const radio of element("reasoning-options").querySelectorAll("input")) radio.checked = radio.value === draft.reasoning;

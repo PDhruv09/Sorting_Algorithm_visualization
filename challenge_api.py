@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from starlette.datastructures import Headers
 
-from challenge_bank import ALGORITHMS
+from challenge_bank import algorithms_for_version
 from challenge_store import create_store, DatabaseUnavailable, SESSION_SECONDS, normalize_email
 
 
@@ -42,6 +42,8 @@ class AccessRequest(BaseModel):
 
 class AnswerRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    # Legacy identifiers remain parseable for explicit v1/v2 rollback; the store
+    # rejects them for v3 before saving, using the attempt's allowed algorithms.
     identification: Literal["insertion", "selection", "merge", "quick", "counting", "bucket"]
     reasoning: str = Field(min_length=1, max_length=4000)
     revision: int = Field(ge=0, strict=True)
@@ -170,13 +172,13 @@ def create_router(database_path=None):
         response.set_cookie(COOKIE, token, httponly=True, secure=secure_cookie and not local_request,
                             samesite="strict", max_age=SESSION_SECONDS, path="/api/challenge")
         result = store.state(token)
-        result["options"] = ALGORITHMS
+        result["options"] = algorithms_for_version(result["test_version"])
         return result
 
     @router.get("/api/challenge/current")
     def current(request: Request, position: int | None = None):
         result = store.state(request.cookies.get(COOKIE), position)
-        result["options"] = ALGORITHMS
+        result["options"] = algorithms_for_version(result["test_version"])
         return result
 
     @router.put("/api/challenge/answers/{position}")

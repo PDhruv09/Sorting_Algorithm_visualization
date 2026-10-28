@@ -13,7 +13,7 @@ from pathlib import Path
 
 from fastapi import HTTPException
 
-from challenge_bank import VERSION, LEGACY_VERSION, grade, make_questions, public_question
+from challenge_bank import VERSION, SUPPORTED_VERSIONS, algorithms_for_version, grade, make_questions, public_question
 
 
 EMAIL_PATTERN = re.compile(r"[a-z0-9][a-z0-9._+-]{0,63}@ucsd\.edu", re.ASCII)
@@ -26,7 +26,7 @@ class DatabaseUnavailable(Exception):
 
 def configured_version():
     version = os.getenv("CHALLENGE_TEST_VERSION", VERSION)
-    if version not in (VERSION, LEGACY_VERSION):
+    if version not in SUPPORTED_VERSIONS:
         raise ValueError("Unsupported CHALLENGE_TEST_VERSION")
     return version
 
@@ -179,6 +179,8 @@ class ChallengeStore:
         ).fetchone()
         if attempt is None:
             raise HTTPException(401, "Your session has ended. Enter your email to resume your saved challenge.")
+        if attempt["test_version"] != self.test_version:
+            raise HTTPException(401, "Challenge Mode has been updated. Enter your email to start the current challenge. Your earlier attempt is preserved.")
         return attempt
 
     def state(self, token, position=None):
@@ -197,13 +199,22 @@ class ChallengeStore:
                   "test_version": attempt["test_version"], "status": attempt["status"],
                   "total": len(questions), "saved_count": len(answers),
                   "current_index": attempt["current_index"], "revision": attempt["revision"],
+                  "points_per_question": 1 if attempt["test_version"] == VERSION else
+                      (2 if all("reasoning_choices" in q for q in questions) else 1),
                   "started_at": attempt["started_at"]}
         if attempt["status"] == "submitted":
             result["submitted_at"] = attempt["submitted_at"]
             result["score"] = attempt["score"]
-            result["max_score"] = len(questions) * (2 if all("reasoning_choices" in q for q in questions) else 1)
+            result["max_score"] = len(questions) * (2 if attempt["test_version"] != VERSION and
+                all("reasoning_choices" in q for q in questions) else 1)
             if os.getenv("CHALLENGE_FEEDBACK_RELEASED", "0") == "1":
-                result["feedback"] = json.loads(attempt["feedback"])
+                feedback = json.loads(attempt["feedback"])
+                # Partial-credit data remains internal, even when explanations
+                # are released. A later grading decision may expose it explicitly.
+                feedback.pop("internal_score", None)
+                for item in feedback.get("questions", []):
+                    item.pop("internal_points", None)
+                result["feedback"] = feedback
         else:
             position = attempt["current_index"] if position is None else position
             if not 0 <= position <= attempt["current_index"] or position >= len(questions):
@@ -220,6 +231,8 @@ class ChallengeStore:
                 raise HTTPException(409, "This challenge has already been submitted.")
             questions = json.loads(attempt["questions"])
             answers = json.loads(attempt["answers"])
+            if identification not in algorithms_for_version(attempt["test_version"]):
+                raise HTTPException(422, "Choose one of the algorithms in this challenge.")
             if not 0 <= position <= attempt["current_index"] or position >= len(questions):
                 raise HTTPException(409, "Complete the current question before continuing.")
             choices = questions[position].get("reasoning_choices")
@@ -253,7 +266,7 @@ class ChallengeStore:
             answers = json.loads(attempt["answers"])
             if set(answers) != {str(position) for position in range(len(questions))}:
                 raise HTTPException(409, "Answer all 15 questions before submitting the challenge.")
-            feedback = grade(questions, answers)
+            feedback = grade(questions, answers, attempt["test_version"])
             database.execute(
                 "UPDATE attempts SET status = 'submitted', feedback = ?, score = ?, "
                 "submitted_at = ?, revision = revision + 1 WHERE id = ?",

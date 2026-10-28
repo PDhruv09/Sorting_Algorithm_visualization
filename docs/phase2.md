@@ -6,14 +6,15 @@ Open the visualizer and select **Challenge Mode**, or visit `/challenge`.
 Enter an authorized UCSD email to start or resume the challenge. No password,
 email verification, SSO, or approval workflow is used.
 
-The challenge contains 15 identification-and-reasoning questions: three each
-for insertion, selection, and merge sort; two each for quick, counting, and
-bucket sort. Heap and bubble sort are excluded. The order is shuffled once per
+The current `sorting-15-v3` challenge contains 15 identification-and-reasoning
+questions: four each for insertion, selection, and merge sort; three for quick
+sort. Only these four algorithms appear in questions, identification options,
+reasoning choices and feedback for this version. The order is shuffled once per
 attempt and persisted. Inputs and algorithm assignments are also persisted,
 so a resume does not create a different challenge.
 
 Only main-array frames are sent to the browser. No algorithm-specific labels,
-source code, bucket containers, or count tables are shown.
+source code or auxiliary structures are shown.
 The algorithm and reasoning choices are public; the correct choice
 is kept on the server. Hidden auxiliary state can make traces ambiguous, so
 this question bank should receive instructor review before use for grading.
@@ -28,9 +29,14 @@ submission can be retried without duplicating the attempt. Students see their
 total score after submission or signing in again. Individual correctness and
 explanations are withheld by the API until `CHALLENGE_FEEDBACK_RELEASED=1`.
 
-Version 2 awards one point for identification and one for a selected reasoning
-choice per question (30 total). Version 1 written responses remain preserved
-with their original identification-only score. Choice order is saved per attempt.
+Version 3 awards one visible point only when both identification and reasoning
+are correct, otherwise zero (15 total). Internally, the stored feedback JSON
+records 0.5 per correct part, with `internal_points` per question and
+`internal_score` for the attempt. These fields never appear in student API
+responses, including after explanation release. Releasing explanations does not
+change scores. A future explicit grading decision can use the internal data.
+Version 2 attempts keep their original 30-point score, and version 1 written
+responses keep their original identification-only score. Choice order is saved per attempt.
 Conceptual questions are intentionally absent from this version.
 
 ## Current attempt policy
@@ -41,6 +47,14 @@ invalidates the older session for that attempt. The schema has an attempt number
 for a later instructor-approved repeat policy, but no repeat controls exist yet.
 There is no staff UI or role-based behavior. The students table reserves a role
 column, defaulting to `student`.
+
+Switching to v3 preserves v1/v2 attempts and scores without modifying their
+stored questions. An old-version cookie gets 401 with an update message, so
+students cannot continue receiving out-of-scope questions after the switch.
+Entering the same email starts/resumes a separate v3 attempt. Draft restoration
+requires the same attempt ID, not just the same email. No old answers are copied
+into the new question set. Old-version algorithms/traces are retained only for
+historical compatibility and explicit old-version configuration/rollback.
 
 ## Local setup (Ubuntu / WSL)
 

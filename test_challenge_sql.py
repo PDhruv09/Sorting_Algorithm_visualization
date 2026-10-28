@@ -11,7 +11,7 @@ CONFIG = {
     "CHALLENGE_SQL_SERVER": "example.database.windows.net",
     "CHALLENGE_SQL_DATABASE": "challenge-test",
     "CHALLENGE_SQL_CLIENT_ID": "11111111-1111-4111-8111-111111111111",
-    "CHALLENGE_TEST_VERSION": "sorting-15-v2",
+    "CHALLENGE_TEST_VERSION": "sorting-15-v3",
 }
 
 

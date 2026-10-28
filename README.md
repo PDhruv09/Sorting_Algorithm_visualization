@@ -133,6 +133,10 @@ Successful responses include the detected class/method, final array, stdout/stde
 ## Phase 2 Azure SQL update
 
 See [Azure deployment steps](docs/azure-deployment.md) for the managed-identity
-connection, manual schema/grants, and Container App settings. Version 2 uses
-multiple-choice reasoning and shows only the total score until staff release
-detailed feedback. Local development still uses SQLite.
+connection, manual schema/grants, and Container App settings. Version 3 uses
+only insertion, selection, quick and merge sort, with 15 questions worth one
+visible point each when both identification and reasoning are correct. Internal
+half-point credit is stored privately for a later grading decision. Detailed
+feedback stays hidden until staff release it; release does not expose internal
+credit or change scores. Local development still uses SQLite. Deploy the new
+image with `CHALLENGE_TEST_VERSION=sorting-15-v3`; older attempts remain preserved.

@@ -15,6 +15,7 @@ until that workload is measured.
 | App minimum replicas | 2 (additional running/idle replica cost) |
 | App maximum replicas | 6 |
 | HTTP scaling target | Existing 3 |
+| `CHALLENGE_TEST_VERSION` | `sorting-15-v3` |
 | `CHALLENGE_ACCESS_REQUESTS_PER_MINUTE` | `240` |
 | `CHALLENGE_WRITE_REQUESTS_PER_MINUTE` | `2400` |
 
@@ -58,12 +59,15 @@ az containerapp update \
   --image ghcr.io/pdhruv09/sorting-algorithm-visualization:COMMIT_SHA \
   --min-replicas 2 \
   --max-replicas 6 \
-  --set-env-vars CHALLENGE_ACCESS_REQUESTS_PER_MINUTE=240 CHALLENGE_WRITE_REQUESTS_PER_MINUTE=2400 \
+  --set-env-vars CHALLENGE_TEST_VERSION=sorting-15-v3 CHALLENGE_ACCESS_REQUESTS_PER_MINUTE=240 CHALLENGE_WRITE_REQUESTS_PER_MINUTE=2400 \
   --output none
 ```
 
 Use `--set-env-vars`, not `--replace-env-vars`: the SQL, identity, origin,
-feedback and test-version settings must remain configured. No roster changes,
+feedback settings must remain configured. The test version is deliberately
+advanced to v3 with this image, giving students a separate four-sort attempt.
+Earlier attempts/scores remain stored and are not reset or regraded. Old cookies
+require email reentry. No roster changes,
 schema migration, new database or attempt reset is required. The existing HTTP
 scaling rule is retained. Container App configuration updates can create a new
 revision; watch deployment health before testing. Record the new revision and
@@ -85,7 +89,7 @@ only to newly created attempts.
 Local regression:
 
 ```text
-python -m unittest test_challenge test_challenge_sql.AzureStoreTests test_challenge_classroom
+python -m unittest test_challenge test_challenge_four_sorts test_challenge_sql.AzureStoreTests test_challenge_classroom
 node --test test_challenge_ui.cjs
 ```
 

@@ -65,13 +65,13 @@ def finish(store, client, email, attempt_id):
         }), 200)
     state = require(client.post("/api/challenge/submit", json={"revision": state["revision"]}), 200)
     assert state["status"] == "submitted"
-    assert "feedback" not in state and state["score"] == 30 and state["max_score"] == 30
+    assert "feedback" not in state and state["score"] == 15 and state["max_score"] == 15
     with store.connection() as database:
-        assert database.execute("SELECT score FROM attempts WHERE id = ?", (attempt_id,)).fetchone()[0] == 30
+        assert database.execute("SELECT score FROM attempts WHERE id = ?", (attempt_id,)).fetchone()[0] == 15
     assert require(client.post("/api/challenge/submit", json={"revision": 0}), 200) == state
     store.set_student(email, False)
     require(client.get("/api/challenge/current"), 401)
-    print(json.dumps({"stage": "passed", "persisted_attempt": attempt_id, "score": "30/30", "test_account_disabled": True}))
+    print(json.dumps({"stage": "passed", "persisted_attempt": attempt_id, "score": "15/15", "test_account_disabled": True}))
 
 
 def main():

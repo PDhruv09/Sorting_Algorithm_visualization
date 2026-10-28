@@ -66,7 +66,7 @@ For Azure, configure these environment variables on the new revision:
 | `CHALLENGE_SQL_SERVER` | `sorting-visualizer-sql-dhp005.database.windows.net` |
 | `CHALLENGE_SQL_DATABASE` | `sorting-challenge-db` |
 | `CHALLENGE_SQL_CLIENT_ID` | Your managed identity's **Client ID** from Azure (not its Object/principal ID) |
-| `CHALLENGE_TEST_VERSION` | `sorting-15-v2` |
+| `CHALLENGE_TEST_VERSION` | `sorting-15-v3` |
 | `CHALLENGE_FEEDBACK_RELEASED` | `0` |
 | `CHALLENGE_LOCAL_HTTP` | `0` |
 | `CHALLENGE_ACCESS_REQUESTS_PER_MINUTE` | `240` for the classroom profile; default `20` |
@@ -155,10 +155,15 @@ auto-pause settings is a separate billing decision, not part of this code patch.
 
 ## Grading, versions, and release
 
-Version `sorting-15-v2` uses 15 questions and six reasoning choices per question.
+Version `sorting-15-v3` uses 15 questions and four reasoning choices per question,
+covering only insertion, selection, quick and merge sort.
 Both question order and choice order are randomized and saved with the attempt.
-Each correct identification earns one point and each correct reason earns one
-point: 30 total. Saved choice IDs are validated against that exact question.
+Each question earns one visible point only when both parts are correct, otherwise
+zero: 15 total. The feedback JSON stores internal half-point credit for each
+correct part, but `internal_score` and `internal_points` are withheld from all
+student APIs, even after explanations are released. The database score column
+stays an integer. No SQL schema migration is required. Saved choice IDs are
+validated against that exact question, and out-of-scope algorithm answers are rejected.
 Until release, submitted APIs contain only the total score and completion metadata;
 they never send individual correctness or the answer key. Before submission,
 even the total score is absent.
@@ -168,11 +173,19 @@ release detailed feedback. Students use the same email to return. There is no
 automatic date: staff control release. Setting it back to `0` hides future API
 responses, but cannot retract answers students have already seen.
 
-Version `sorting-15-v1` text attempts are preserved and retain their original
-15-point identification score. They are not regraded as multiple choice. Moving
-to v2 permits a separate attempt per email for this new version. The app does not
+Version `sorting-15-v1` text attempts retain their original 15-point identification
+score; `sorting-15-v2` attempts retain their original six-sort questions and
+30-point scores. Switching to v3 creates a separate attempt per email. Existing
+cookies for earlier versions receive 401 and must re-enter email, preventing old
+questions from appearing in the active PA. Old drafts are not applied to a new
+attempt. Earlier records are not deleted or regraded. The app does not
 offer repeated attempts within a version. Do not change version names to reset
 attempts casually, and do not delete real submissions for testing.
+
+For this release, update the image and `CHALLENGE_TEST_VERSION=sorting-15-v3`
+together. Leaving Azure's existing v2 environment variable in place keeps the
+old challenge active despite deploying the new code. Keep classroom limits,
+SQL identity/configuration and the disabled SQL auto-pause setting unchanged.
 
 ## Docker impact and alternatives
 
